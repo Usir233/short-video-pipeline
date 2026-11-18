@@ -1,6 +1,11 @@
 # CreatorHub 接口（分发相关）
 
-依据：`creatorhub/app/main.py`，提交 `a902546`（v0.2.8）。仓库更新后以源码为准。
+依据：`creatorhub/app/main.py`。**核对时的提交：`a902546`**（v0.2.8，2026-11-18）。
+
+CreatorHub 用的是最新版，本文件可能落后于它。每次发布前执行 `git -C creatorhub rev-parse --short HEAD`，和上面的提交号比较：
+
+- 一致：直接按本文件做。
+- 不一致：先对照源码重新核对本次要用的接口，再发布。至少核对 `creatorhub/app/main.py` 里的 `class PublishIn`、`class KeywordCollectionIn`、`class ShareDownloadIn` 的字段，以及 `/api/publish`、`/api/publish/upload`、`/api/publish/{tid}/run-now`、`/api/accounts` 这几个路由是否还在、行为是否变了。有变化就改本文件并把上面的提交号改成当前的；没变化也把提交号改成当前的。
 
 - 地址：`http://127.0.0.1:8000`，只监听本机，默认不需要鉴权。
 - 请求体和返回都是 JSON，上传文件除外。

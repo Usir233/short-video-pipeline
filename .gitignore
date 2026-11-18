@@ -1,10 +1,10 @@
-# 白名单：只跟踪规则和版本锁定文件，其余一律忽略。
+# 白名单：只跟踪规则，其余一律忽略。
 # 配套仓库、账号数据、运行产物都不进本仓库。
+# package-lock.json 不跟踪：配套仓库一律用最新版，不锁版本。
 /*
 !/.gitignore
 !/AGENTS.md
 !/CLAUDE.md
 !/.agents/
 !/package.json
-!/package-lock.json
 .DS_Store

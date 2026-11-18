@@ -13,7 +13,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 ## 用到的仓库
 
-每一步用哪个仓库、读它的哪个 skill，写在下表。**进入某一步之前，先把该仓库的 skill 整篇读完再动手**，按它的做法做。固定的版本和命令入口见 [references/repos.md](references/repos.md)，新环境的安装步骤见 [references/setup.md](references/setup.md)。
+每一步用哪个仓库、读它的哪个 skill，写在下表。**进入某一步之前，先把该仓库的 skill 整篇读完再动手**，按它的做法做。配套仓库一律用最新版本，不固定版本。命令入口见 [references/repos.md](references/repos.md)，新环境的安装和已有环境的更新见 [references/setup.md](references/setup.md)。用户说「更新配套仓库」时，按 `setup.md` 的「更新已有环境」做。
 
 | 步骤 | 仓库 | 本机位置 | 先读的 skill 或文档 |
 |---|---|---|---|
@@ -157,6 +157,7 @@ CreatorHub 仓库里没有给 agent 的 skill，它的接口整理在 `reference
 
 **按 [references/creatorhub-api.md](references/creatorhub-api.md) 的「标准发布顺序」做**，那里有接口、参数、状态和各种失败的处理办法。要点：
 
+- 先按它开头写的办法，核对接口文档和当前 CreatorHub 版本是否一致。
 - 每个平台各写一份标题、正文、话题，写进 `publish.json`。
 - 建立任务就等于提交发布，建之前确认自检已通过。
 - 一个账号发完再发下一个。

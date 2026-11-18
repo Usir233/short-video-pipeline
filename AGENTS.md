@@ -16,13 +16,15 @@
 
 本仓库只存规则，不含配套仓库。`node_modules/`、`rea-video/`、`creatorhub/` 任何一个不存在时，先按 `.agents/skills/short-video-pipeline/references/setup.md` 安装。
 
+配套仓库一律用最新版本，不固定版本。用户说「更新配套仓库」时，按同一个文件的「更新已有环境」做。
+
 ## 目录
 
 | 位置 | 是否在本仓库里 | 内容 |
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）和参考文件（`references/`） |
-| `package.json`、`package-lock.json` | 是 | 固定 OpenFilm 的版本 |
+| `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
 | `creatorhub/` | 否 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub)：账号、采集、下载、发布，本机接口 `http://127.0.0.1:8000` |
@@ -31,8 +33,8 @@
 
 参考文件：
 
-- `references/repos.md`：配套仓库的固定版本、命令入口、要读的 skill
-- `references/setup.md`：新环境的安装步骤
+- `references/repos.md`：配套仓库、命令入口、要读的 skill
+- `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/creatorhub-api.md`：分发用到的接口
 
 ## 不要做的事

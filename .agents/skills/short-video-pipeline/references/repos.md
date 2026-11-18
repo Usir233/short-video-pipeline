@@ -1,13 +1,20 @@
 # 配套仓库
 
-路径都相对工作区根目录。固定版本是这套流程核对过的版本（核对日期 2026-11-18）；安装步骤见 [setup.md](setup.md)。升级某个仓库后，要重新核对它的 skill 和接口，并更新本文件和 [creatorhub-api.md](creatorhub-api.md)。
+路径都相对工作区根目录。安装和更新步骤见 [setup.md](setup.md)。
+
+**配套仓库一律使用最新版本，不固定版本。** 新环境安装时取最新；已有环境在用户说「更新配套仓库」时更新。
+
+版本变了以后，以各仓库自己的 skill 和文档为准。本目录里唯一依赖具体版本的是 [creatorhub-api.md](creatorhub-api.md)，它是从 CreatorHub 源码整理的，文件开头记着核对时的提交号；提交号对不上时，按它开头写的办法重新核对。
+
+下面每个仓库的「上次核对」只是记录这套流程在哪个版本上验证过，用来在新版本出问题时对照，不是要求安装的版本。
 
 ## 需要安装到工作区的三个仓库
 
 ### openfilm/openfilm：素材库、剪辑、渲染
 
 - 仓库：https://github.com/openfilm/openfilm
-- 固定版本：npm 包 `openfilm` 0.3.2，由根目录的 `package.json` 和 `package-lock.json` 固定
+- 版本：npm 包 `openfilm` 的最新版（根目录 `package.json` 里写的是 `latest`）
+- 上次核对：0.3.2，2026-11-18
 - 安装位置：`node_modules/openfilm/`
 - 命令：`node_modules/.bin/openfilm`
 - 给 agent 的 skill（必须读）：
@@ -23,7 +30,8 @@
 ### JuneYaooo/rea-video：拆解参考视频、给出复刻方案
 
 - 仓库：https://github.com/JuneYaooo/rea-video
-- 固定版本：提交 `07dd587119e884f7c50fbfae92e47840de86bea5`
+- 版本：默认分支的最新提交
+- 上次核对：提交 `07dd587`，2026-11-18
 - 安装位置：`rea-video/`，虚拟环境 `rea-video/.venv`
 - 命令：`rea-video/.venv/bin/rea-video`（不在 PATH 里）
 - 给 agent 的 skill（必须读）：
@@ -31,14 +39,15 @@
   - `rea-video/skills/rea-video/references/`：`review.md`（看图复核）、`taxonomy.md`（画面分类）、`audio.md`、`materials.md`、`remake.md`（各类镜头怎么复刻）、`remake-tools.md`（可选的复刻工具）、`setup.md`、`memory.md`、`output-template.md`
   - `rea-video/AGENTS.md`：仓库对 agent 的说明
 - 说明：
-  - 虚拟环境必须用 Python 3.12–3.14。在 3.11 上 `rea_video/report.py` 有语法错误，拆片包（`VIDEO.md`、`video/`）和报告都生成不出来。
+  - 虚拟环境用 Python 3.12–3.14。上次核对的版本在 3.11 上 `rea_video/report.py` 有语法错误，拆片包（`VIDEO.md`、`video/`）和报告都生成不出来。
   - 安装时带 `[ocr,asr]`，才有字幕时间轴和台词识别。首次运行会下载模型到 `~/.cache/rea-video/models`。
   - 它提到的复刻执行工具 [JuneYaooo/capsule-cinema](https://github.com/JuneYaooo/capsule-cinema) 和 ChatCut 都要付费，本流程不安装、不使用。
 
 ### 3441293738/creatorhub：账号、采集、下载、发布
 
 - 仓库：https://github.com/3441293738/creatorhub
-- 固定版本：v0.2.8，提交 `a902546d4df0d15799da339c13d6f09120b93351`
+- 版本：默认分支的最新提交
+- 上次核对：v0.2.8，提交 `a902546`，2026-11-18
 - 安装位置：`creatorhub/`
 - 命令：在 `creatorhub/` 里 `python3 creatorhub.py install`、`start --no-open`、`check`
 - 本机接口：`http://127.0.0.1:8000`
@@ -61,4 +70,6 @@
 
 - 仓库：https://github.com/adryfish/fingerprint-chromium
 - 用途：给 CreatorHub 的抖音、视频号账号用，按账号的种子生成固定指纹。不装也能用，CreatorHub 自带的浏览器可以发布。
+- 版本：有对应系统安装包的最新发行版
+- 上次核对：148.0.7778.215（macOS），2026-11-18
 - 安装位置：`browsers/`
