@@ -2,6 +2,8 @@
 
 路径都相对工作区根目录。安装和更新步骤见 [setup.md](setup.md)。
 
+三个仓库都装在工作区里，不全局安装；它们的设置、模型、缓存、浏览器内核也都在工作区里，由 `.agents/skills/short-video-pipeline/scripts/env.sh` 指定位置。执行下面任何命令之前先执行这个环境脚本。
+
 **配套仓库一律使用最新版本，不固定版本。** 新环境安装时取最新；已有环境在用户说「更新配套仓库」时更新。
 
 版本变了以后，以各仓库自己的 skill 和文档为准。本目录里唯一依赖具体版本的是 [creatorhub-api.md](creatorhub-api.md)，它是从 CreatorHub 源码整理的，文件开头记着核对时的提交号；提交号对不上时，按它开头写的办法重新核对。
@@ -25,7 +27,8 @@
   - `node_modules/openfilm/SPEC.md`：`film.html` 的规范，拿不准写法时查
 - 说明：
   - 自带库（音乐、音效、转场、特效、滤镜、贴纸、文字、模板）装好就能用。
-  - 配音、出图、出视频、素材搜索要在 OpenFilm 的设置里接服务，连接信息存在 `~/.openfilm`，不随本仓库迁移。`openfilm get` 列出当前能用的种类。
+  - 配音、出图、出视频、素材搜索要在 OpenFilm 的设置里接服务，连接信息存在 `.local/openfilm/`（由环境脚本的 `OPENFILM_HOME` 指定），不随本仓库迁移。`openfilm get` 列出当前能用的种类。
+  - 渲染用的浏览器内核在 `browsers/ms-playwright/`（`PLAYWRIGHT_BROWSERS_PATH`）。
 
 ### JuneYaooo/rea-video：拆解参考视频、给出复刻方案
 
@@ -40,7 +43,7 @@
   - `rea-video/AGENTS.md`：仓库对 agent 的说明
 - 说明：
   - 虚拟环境用 Python 3.12–3.14。上次核对的版本在 3.11 上 `rea_video/report.py` 有语法错误，拆片包（`VIDEO.md`、`video/`）和报告都生成不出来。
-  - 安装时带 `[ocr,asr]`，才有字幕时间轴和台词识别。首次运行会下载模型到 `~/.cache/rea-video/models`。
+  - 安装时带 `[ocr,asr]`，才有字幕时间轴和台词识别。首次运行会下载模型到 `.local/rea-video/models/`（`REA_VIDEO_MODELS`）；它的记忆文件在 `.local/rea-video/home/`（`REA_VIDEO_HOME`）。
   - 它提到的复刻执行工具 [JuneYaooo/capsule-cinema](https://github.com/JuneYaooo/capsule-cinema) 和 ChatCut 都要付费，本流程不安装、不使用。
 
 ### 3441293738/creatorhub：账号、采集、下载、发布

@@ -36,10 +36,10 @@ CreatorHub 用的是最新版，本文件可能落后于它。每次发布前执
 `POST /api/publish/upload`，multipart，字段名 `files`。
 
 ```bash
-curl -fsS -F "files=@runs/<目录>/final.mp4" http://127.0.0.1:8000/api/publish/upload
+curl -fsS -F "files=@runs/<目录>/output/final.mp4" http://127.0.0.1:8000/api/publish/upload
 ```
 
-返回 `{"files":[{"path":"<服务端保存的绝对路径>","name":"final.mp4"}]}`。取 `path`。一个成片上传一次，三个平台共用这个 `path`。
+返回 `{"files":[{"path":"<服务端保存的绝对路径>","name":"final.mp4"}]}`。取 `path`。一个成片上传一次，三个平台共用这个 `path`。CreatorHub 把上传的副本存在 `creatorhub/data/uploads/`，也在工作区里。
 
 ### 2. 建发布任务
 
@@ -182,7 +182,7 @@ curl -fsS -X POST http://127.0.0.1:8000/api/publish \
 }
 ```
 
-- `output_dir` 必须是绝对路径：相对路径会被当成相对 CreatorHub 的运行目录（`creatorhub/`）。运行时在工作区根目录用 `pwd` 现算，不要写死。
+- `output_dir` 必须是绝对路径：相对路径会被当成相对 CreatorHub 的运行目录（`creatorhub/`）。执行环境脚本后用 `$SVP_ROOT/runs/<目录>/ref` 现算，不要写死。必须指到本次运行目录的 `ref/`，不要用 CreatorHub 的默认下载位置。
 - `download: false` 只解析作品信息，不下载。
 - `account_id` 可选，填了会用该账号的登录态去取，取不到时再加。
 - 返回 `{ok, links, results[]}`。每个结果有 `ok`，失败时有 `error`。文件落在 `output_dir` 下，到那里找视频文件。

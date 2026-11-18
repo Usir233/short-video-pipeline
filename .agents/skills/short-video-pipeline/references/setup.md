@@ -6,6 +6,39 @@
 
 所有命令在工作区根目录（`AGENTS.md` 所在目录）执行。
 
+## 一律装在工作区里
+
+用户已定：配套仓库和它们带来的一切，都装在本工作区的目录下。
+
+- 不全局安装：不用 `npm install -g`、`sudo`、`pip install --user`，不往系统 Python 里装包，不用系统包管理器装东西。
+- 不改 PATH、不改 shell 配置文件、不建全局命令。命令一律用工作区里的路径调用（`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`）。
+- 不运行各仓库里往工作区之外安装的脚本（例如 rea-video 的 `scripts/install_skill.sh`）。
+- **每个 shell 里先执行环境脚本，再执行下面任何命令：**
+
+  ```bash
+  . .agents/skills/short-video-pipeline/scripts/env.sh
+  ```
+
+  它设置的变量和对应的位置：
+
+  | 变量 | 位置 | 内容 | 不设时会落到 |
+  |---|---|---|---|
+  | `OPENFILM_HOME` | `.local/openfilm/` | OpenFilm 的设置、服务连接、日志、库缓存 | `~/.openfilm` |
+  | `OPENFILM_LIBRARY`、`OPENFILM_EXPORTS` | `runs/` | 没指定位置时的项目目录和导出目录 | `~/Movies/OpenFilm`、桌面 |
+  | `OPENFILM_SAVED`、`OPENFILM_SKILLS` | `.local/openfilm-user/` | 在 OpenFilm 里「保存」的片段、用户自己的 skill | `~/Movies/OpenFilm` |
+  | `REA_VIDEO_MODELS` | `.local/rea-video/models/` | rea-video 的模型 | `~/.cache/rea-video/models` |
+  | `REA_VIDEO_HOME` | `.local/rea-video/home/` | rea-video 的记忆文件 | `~/.rea-video` |
+  | `PLAYWRIGHT_BROWSERS_PATH` | `browsers/ms-playwright/` | OpenFilm 渲染和 CreatorHub 用的浏览器内核 | 用户缓存目录下的 `ms-playwright` |
+  | `npm_config_cache`、`PIP_CACHE_DIR` | `.local/npm-cache/`、`.local/pip-cache/` | 包管理器的下载缓存 | `~/.npm`、用户缓存目录 |
+  | `SVP_ROOT` | 工作区根目录的绝对路径 | 给需要绝对路径的接口用 | — |
+
+  启动 CreatorHub 的那个 shell 也必须先执行它，否则 CreatorHub 会到用户缓存目录里找浏览器内核。
+
+做不到放进工作区的，只有两类：
+
+- 下面「机器上要先有」的系统级软件，由用户安装。
+- 各工具运行时自己用的系统临时目录，文件是短暂的，用完即删。agent 自己的临时文件不放那里，放运行目录的 `tmp/`。
+
 ## 机器上要先有
 
 | 需要 | 要求 | 检查 |
@@ -21,14 +54,16 @@
 
 ## 安装三个配套仓库
 
+先执行环境脚本（见上一节），再往下做。
+
 ### 1. OpenFilm
 
 ```bash
-npm install openfilm@latest
+npm install openfilm@latest          # 不带 -g，装到 node_modules/
 node_modules/.bin/openfilm doctor
 ```
 
-`doctor` 报缺渲染用的浏览器时，按它的提示处理。
+`doctor` 报缺渲染用的浏览器时，按它的提示处理；执行过环境脚本后，浏览器会下载到 `browsers/ms-playwright/`。`doctor` 的 `Data` 一行应当是工作区里的 `.local/openfilm`，`Projects` 一行应当是工作区里的 `runs`；不是的话说明环境脚本没生效，先解决再继续。
 
 ### 2. rea-video
 
@@ -39,7 +74,7 @@ python3.12 -m venv rea-video/.venv          # 换成本机有的 3.12–3.14 解
 rea-video/.venv/bin/rea-video --help
 ```
 
-不要运行它的 `scripts/install_skill.sh`：那个脚本会往系统 Python 和用户主目录里装东西。
+依赖装进 `rea-video/.venv`，不进系统 Python。不要运行它的 `scripts/install_skill.sh`：那个脚本会往系统 Python 和用户主目录里装东西。
 
 装之前看一眼 `rea-video/skills/rea-video/references/setup.md`，新版本对 Python 或依赖的要求变了就以它为准。
 
@@ -52,7 +87,7 @@ git clone https://github.com/3441293738/creatorhub.git
 curl -fsS http://127.0.0.1:8000/health
 ```
 
-`install` 会建它自己的虚拟环境、下载浏览器组件、生成 `config.yaml`，需要联网，耗时较长。
+`install` 会建它自己的虚拟环境（`creatorhub/.venv`）、下载浏览器组件（执行过环境脚本后下载到 `browsers/ms-playwright/`）、生成 `config.yaml`，需要联网，耗时较长。`start` 也要在执行过环境脚本的 shell 里运行。
 
 装完后按 [creatorhub-api.md](creatorhub-api.md) 开头写的办法，核对接口文档和当前版本是否一致。
 
@@ -61,6 +96,8 @@ curl -fsS http://127.0.0.1:8000/health
 用户说「更新配套仓库」时做。不要在一次做视频的流程中途自动更新。
 
 ```bash
+. .agents/skills/short-video-pipeline/scripts/env.sh
+
 # OpenFilm
 npm install openfilm@latest
 
@@ -108,18 +145,31 @@ git -C creatorhub pull --ff-only
 ## 装完后的验证
 
 ```bash
+. .agents/skills/short-video-pipeline/scripts/env.sh
+node_modules/.bin/openfilm doctor                               # Data、Projects 两行都在工作区里，Browser 一行正常
 node_modules/.bin/openfilm get                                  # 列出自带库和可用服务
 rea-video/.venv/bin/rea-video decompose <任意一个 mp4> -o runs/_check --lang zh
-ls runs/_check/VIDEO.md runs/_check/video                       # 两者都在才算装对，看完可删掉 runs/_check
+ls runs/_check/VIDEO.md runs/_check/video                       # 两者都在才算装对，看完删掉 runs/_check
 curl -fsS http://127.0.0.1:8000/api/accounts                    # 能看到已登录的账号
 ```
 
+## 以前装在工作区之外的环境
+
+机器上已有旧的设置或缓存（见上面表格的「不设时会落到」一列）时：
+
+- 执行环境脚本后，各工具只认工作区里的位置，旧位置不再使用。
+- 想省掉重新下载，可以把旧位置里的模型和浏览器内核**复制**进工作区对应的目录。
+- 旧位置的东西不要删：其他项目可能也在用。告诉用户有哪些、各占多大，由用户决定。
+- CreatorHub 若是在执行环境脚本之前启动的，它仍在用旧位置的浏览器内核；下次由用户同意重启后才切换过来。
+
 ## 不随仓库迁移的东西
 
-| 内容 | 位置 | 换环境后 |
+这些都在工作区里，但不进 git。换机器时整个工作区目录一起拷走就都带上了；只克隆仓库的话按下表处理。
+
+| 内容 | 位置 | 只克隆仓库时 |
 |---|---|---|
 | 账号登录态、数据库、浏览器 Profile | `creatorhub/data/`、`creatorhub/config.yaml` | 重新登录。若要整体搬迁，由用户自己拷贝 `creatorhub/data/`；里面有明文登录态，不要经过网盘、聊天工具或代码仓库 |
-| OpenFilm 的服务连接 | `~/.openfilm` | 重新连接 |
-| rea-video 的模型缓存 | `~/.cache/rea-video/models` | 首次运行自动重新下载 |
-| 运行产物和选题日志 | `runs/` | 需要去重历史时，由用户拷贝 `runs/topics-log.jsonl` |
-| 浏览器内核 | `browsers/` | 按上面「可选」一节重装 |
+| OpenFilm 的设置和服务连接 | `.local/openfilm/` | 重新连接。里面有密钥，同样不要外传 |
+| rea-video 的模型 | `.local/rea-video/models/` | 首次运行自动重新下载 |
+| 浏览器内核 | `browsers/` | 安装时重新下载；指纹浏览器按上面「可选」一节重装 |
+| 归档的运行产物和总索引 | `runs/` | 需要去重历史时，由用户拷贝 `runs/topics-log.jsonl` |
