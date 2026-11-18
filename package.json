@@ -1,0 +1,8 @@
+{
+  "name": "video-workspace",
+  "private": true,
+  "description": "Local workspace tools",
+  "dependencies": {
+    "openfilm": "^0.3.2"
+  }
+}
