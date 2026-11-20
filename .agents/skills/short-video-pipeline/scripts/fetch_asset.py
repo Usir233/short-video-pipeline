@@ -218,8 +218,10 @@ const { chromium } = require(process.env.SVP_PW_MOD);
       || document.querySelector('time')?.getAttribute('datetime')
       || document.querySelector('time')?.textContent?.trim() || '';
 
-    const container = document.querySelector('article, main, .post_content, .article-content, #paragraph') || document.body;
-    const text = (container?.innerText || '').replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000);
+    const container = document.querySelector('article, main, .post_content, .article-content, #paragraph');
+    const cText = (container?.innerText || '').trim();
+    const rawText = cText.length >= 200 ? cText : (document.body?.innerText || '');
+    const text = rawText.replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000);
 
     const seen = new Set();
     const imgs = [];
@@ -262,19 +264,27 @@ const { chromium } = require(process.env.SVP_PW_MOD);
 
     info = json.loads(proc.stdout.strip().splitlines()[-1])
     downloaded: list[dict[str, Any]] = []
-    for idx, im in enumerate(info.get("imgs") or [], 1):
+    seen_hashes: set[str] = set()
+    img_idx = 0
+    for im in (info.get("imgs") or []):
         try:
-            saved = download_file(im["src"], out_dir, f"{slug}-img{idx}", default_ext=".jpg")
-            if saved.stat().st_size < 8192:
+            saved = download_file(im["src"], out_dir, f"{slug}-tmp", default_ext=".jpg")
+            data_bytes = saved.read_bytes()
+            digest = hashlib.sha1(data_bytes).hexdigest()
+            if len(data_bytes) < 8192 or digest in seen_hashes:
                 saved.unlink(missing_ok=True)
                 continue
+            seen_hashes.add(digest)
+            img_idx += 1
+            final_path = out_dir / f"{slug}-img{img_idx}{saved.suffix}"
+            saved.replace(final_path)
             rec = {
-                "path": str(saved),
+                "path": str(final_path),
                 "url": im["src"],
                 "width": im.get("width", 0),
                 "height": im.get("height", 0),
                 "alt": im.get("alt", ""),
-                "size_bytes": saved.stat().st_size,
+                "size_bytes": len(data_bytes),
             }
             downloaded.append(rec)
         except Exception:

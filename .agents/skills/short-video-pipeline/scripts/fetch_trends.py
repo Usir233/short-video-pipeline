@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import html
 import json
 import re
@@ -78,9 +79,12 @@ NEWSNOW_DOMESTIC_FALLBACK: list[tuple[str, str, str]] = [
 
 
 def http_get(url: str, timeout: float = 10.0) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "gzip, identity"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+        raw = resp.read()
+        if resp.headers.get("Content-Encoding", "").lower() == "gzip" or raw[:2] == b"\x1f\x8b":
+            raw = gzip.decompress(raw)
+        return raw
 
 
 def clean_text(text: str | None, max_len: int = 240) -> str:
@@ -276,16 +280,39 @@ def fetch_crawler_fallback(limit: int = 20) -> dict[str, Any]:
         return {"ok": False, "label": "hot-search-crawler 兜底", "errors": [str(exc)]}
 
 
+def canonical_platform(key: str) -> str:
+    """将同一底层媒体的多个抓取源归一，避免跨平台统计虚高。"""
+    alias = {
+        "60s_it_news": "ithome",
+        "60s_it_rank": "ithome",
+        "nn_ithome": "ithome",
+        "nn_sspai": "sspai",
+        "rss_sspai": "sspai",
+        "nn_hackernews": "hackernews",
+        "hn_algolia": "hackernews",
+        "60s_douyin": "douyin",
+        "nn_douyin": "douyin",
+        "60s_weibo": "weibo",
+        "nn_weibo": "weibo",
+        "60s_zhihu": "zhihu",
+        "nn_zhihu": "zhihu",
+        "60s_bili": "bilibili",
+        "nn_bilibili": "bilibili",
+    }
+    return alias.get(key, key)
+
+
 def find_cross_platform(sources: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """简单检测同时出现在 2 个及以上平台的相近话题（按去标点后短语/关键词重合度）。"""
-    entries: list[tuple[str, str, str]] = []
+    """简单检测同时出现在 2 个及以上不同底层平台的相近话题（按去标点后短语/关键词重合度）。"""
+    entries: list[tuple[str, str, str, str]] = []
     for key, src in sources.items():
         if not src.get("ok"):
             continue
+        plat = canonical_platform(key)
         for it in src.get("items") or []:
             t = it.get("title") or ""
             if len(t) >= 4:
-                entries.append((key, t, it.get("url") or ""))
+                entries.append((key, plat, t, it.get("url") or ""))
 
     def norm_tokens(s: str) -> set[str]:
         s_clean = re.sub(r"[^\w\u4e00-\u9fff]+", " ", s.lower())
@@ -294,31 +321,34 @@ def find_cross_platform(sources: dict[str, dict[str, Any]]) -> list[dict[str, An
         bigrams = {cjk[i:i + 2] for i in range(max(0, len(cjk) - 1))}
         return words | bigrams
 
-    tokenized = [(k, t, u, norm_tokens(t)) for k, t, u in entries]
+    tokenized = [(k, p, t, u, norm_tokens(t)) for k, p, t, u in entries]
     clusters: list[dict[str, Any]] = []
     used: set[int] = set()
-    for i, (ki, ti, ui, toksi) in enumerate(tokenized):
+    for i, (ki, pi, ti, ui, toksi) in enumerate(tokenized):
         if i in used or len(toksi) < 2:
             continue
+        group_plats = {pi}
         group_sources = {ki}
         group_titles = [(ki, ti, ui)]
         for j in range(i + 1, len(tokenized)):
             if j in used:
                 continue
-            kj, tj, uj, toksj = tokenized[j]
-            if kj == ki or len(toksj) < 2:
+            kj, pj, tj, uj, toksj = tokenized[j]
+            if pj == pi or pj in group_plats or len(toksj) < 2:
                 continue
             inter = len(toksi & toksj)
             ratio = inter / min(len(toksi), len(toksj))
             if inter >= 3 and ratio >= 0.45:
                 used.add(j)
+                group_plats.add(pj)
                 group_sources.add(kj)
                 group_titles.append((kj, tj, uj))
-        if len(group_sources) >= 2:
+        if len(group_plats) >= 2:
             used.add(i)
             clusters.append({
-                "platforms": sorted(group_sources),
-                "platform_count": len(group_sources),
+                "platforms": sorted(group_plats),
+                "sources": sorted(group_sources),
+                "platform_count": len(group_plats),
                 "representative": ti,
                 "matches": [{"source": s, "title": t, "url": u} for s, t, u in group_titles],
             })

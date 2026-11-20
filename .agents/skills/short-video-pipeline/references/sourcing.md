@@ -97,7 +97,8 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_asset.py register \
 ## 四、版权与画面合规底线
 
 1. **科技新闻/真实事件素材（C 类）**：
-   - 优先使用**官方新闻室（Newsroom / Press Kit / 官方博客 / 官方频道发布会）**的原图、官网干净截图和 ≤6 秒的官方 Demo 短切片，并在画面角落或说明中清晰标注出处（如“来源：NVIDIA 官方博客”）。
+   - 中文科技媒体的二次转载图常带站点水印（如右下角角标）且会被压小。**中文报道只用来发现线索，抓官图和截图必须溯源到海外/大厂官方原博或 Newsroom**（如 `techcommunity.microsoft.com`、`openai.com`、`apple.com/newsroom`）拿无水印高清原图，且下载后必须逐张看图确认无水印再入 `film/assets/`。
+   - 优先使用**官方新闻室（Newsroom / Press Kit / 官方博客 / 官方频道发布会）**的原图、官网干净截图和 ≤6 秒的官方 Demo 短切片，并在画面角落或说明中清晰标注出处（如“来源：Microsoft USB Blog”）。
    - 新闻中的参数对比、跑分数据优先抽取事实后用 **B 类代码画面**重绘，避免模糊截图。
 2. **严禁越界**：
    - 严禁把别人的二次创作短视频成片、搬运片段、带平台/图库水印的图或视频当素材（CreatorHub 下载的参考视频只进 `ref/`）。

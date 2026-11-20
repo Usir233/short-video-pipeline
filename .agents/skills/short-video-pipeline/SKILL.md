@@ -188,6 +188,8 @@ runs/
 
 **先整篇读 `openfilm skill media`**（在 `film/` 目录里执行 `../../../node_modules/.bin/openfilm skill media`）及 [references/sourcing.md](references/sourcing.md)。
 
+> **前置动作**：OpenFilm 0.4.1 执行 `openfilm get --take` 前要求目录已是项目，否则会报 `is not in a project`。先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。
+
 按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
 - **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
@@ -207,7 +209,7 @@ runs/
 约束：
 
 - 不生成真实人物的肖像、真实品牌的标志、伪造的新闻画面或截图。
-- 新闻/科技发布类素材只取**官方新闻室、官方博客、官方频道发布/Demo（≤6 秒）或权威媒体原文的真实配图与截图**，并在画面角落或说明中清晰标注来源（如“来源：Apple Newsroom”）。
+- 新闻/科技发布类素材只取**官方新闻室、官方博客、官方频道发布/Demo（≤6 秒）或权威媒体原文的无水印真实配图与截图**，并在画面角落或说明中清晰标注来源（如“来源：Microsoft USB Blog”）。中文二次报道配图常带媒体水印且分辨率偏低，遇到海外科技大厂发布时须溯源到官方原博抓无水印高清图。
 - 不把别人的二次创作短视频成片、搬运片段或带平台/图库水印的画面当素材。CreatorHub 采集和下载到的参考视频只进 `ref/`；通用图库素材只取无水印、允许免费使用的公开源。
 - 会另外收费的生成或付费素材（OpenFilm 标了 at a cost 的、外部付费服务）先告诉用户费用并等同意。agent 自带的搜索和生成能力不在此列。
 - 某一镜的搜索或生成失败、不可用时，改用代码画面，流程继续。
@@ -219,16 +221,19 @@ runs/
 
 本工作区的约定：
 
-- 每条命令都在运行目录的 `film/` 里执行，先执行环境脚本，命令是 `../../../node_modules/.bin/openfilm`。
+- 每条命令都在运行目录的 `film/` 里执行，先执行环境脚本，命令是 `../../../node_modules/.bin/openfilm`（source `env.sh` 后直接 `openfilm` 也指向它）。
 - 项目就建在运行目录的 `film/`，不用 OpenFilm 默认的项目位置。
-- 画面 1080×1920。
-- 没有图形界面或在受限环境里跑时，加环境变量 `OPENFILM_NO_BROWSER=1`。
+- 画面 1080×1920；**竖屏平台安全区**：顶部留 ≥160px（避开状态栏/搜索栏），底部留 ≥360px（避开抖音/小红书/视频号底栏文案），主视觉和标题控制在 2 行以内，不遮挡、不折出第 3 行。
+- 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
+- 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
+- 短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾（MP3 编码填充易导致 WebAudio 解码时长略短于 `ffprobe` 而报错），转场音效与点缀音效分放不同 `<section>` 防重叠；按 `openfilm look` 的响度提示清理过轻或未使用的音频。
+- 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
 - 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`。每次都带 `--out`，不用默认的导出位置。
 
 出片前自检，全部通过才能进入发布：
 
-- 每镜至少用 `openfilm look` 看一帧：文字不出框、不遮挡、没有错字。
-- `ffprobe`：1080×1920、时长与分镜一致、有音轨。
+- 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
+- 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
 自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，每项检查的结论写进 `check.json`。
