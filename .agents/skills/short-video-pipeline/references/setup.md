@@ -133,7 +133,8 @@ git -C creatorhub pull --ff-only
 
 1. 打开 `http://127.0.0.1:8000`，在账号页扫码登录抖音、小红书、视频号。
 2. 小红书的号再做一次「创作者登录」，否则不能发布。
-3. 想用配音、出图、出视频、素材搜索：在 OpenFilm 的设置里接上对应服务。不接也能跑，画面以自带库和代码画面为主。
+3. **强烈推荐（免费）**：到 Pexels（https://www.pexels.com/api/）和 Pixabay（https://pixabay.com/api/docs/）申请免费 API Key，在 `env.sh` 环境下打开局部 OpenFilm Studio 的 Settings → Services 填入，即可直接用 `openfilm get image-search` / `video-search --orientation portrait` 搜高清竖屏无版权 B-roll。不填也能跑（内置脚本 `scripts/fetch_asset.py` 会用免 Key 的官方新闻抓图/截图、Wikimedia/NASA/Archive 与代码画面兜底）。
+4. 想用配音、AI 出图、AI 出视频：同样在 OpenFilm 的设置里接对应服务；不接也能跑。
 
 ## 可选：指纹浏览器内核
 

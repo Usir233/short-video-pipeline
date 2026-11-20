@@ -38,7 +38,7 @@
 | 位置 | 是否在本仓库里 | 内容 |
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
-| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境脚本（`scripts/env.sh`） |
+| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
@@ -50,6 +50,7 @@
 参考文件：
 
 - `references/repos.md`：配套仓库、命令入口、要读的 skill
+- `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/creatorhub-api.md`：分发用到的接口
 

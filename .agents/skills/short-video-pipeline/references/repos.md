@@ -60,14 +60,22 @@
   - 账号登录态、数据库、浏览器 Profile、上传文件都在 `creatorhub/data/`，不随本仓库迁移，也不得外传。
   - 小红书固定用系统安装的 Google Chrome。
 
-## 不安装、直接调用的公开接口
+## 不安装、直接调用的公开接口（封装在 `scripts/` 中）
 
-| 用途 | 仓库 | 接口 |
+完整的对比依据、降级链路和命令示例见 [sourcing.md](sourcing.md)。
+
+| 用途 | 来源 / 仓库 | 入口与接口 |
 |---|---|---|
-| 抖音、微博热榜 | [vikiboss/60s](https://github.com/vikiboss/60s) | `https://60s.viki.moe/v2/douyin`、`https://60s.viki.moe/v2/weibo` |
-| 热榜备用 | [solarhell/hot-search-crawler](https://github.com/solarhell/hot-search-crawler) | `https://solarhell.github.io/hot-search-crawler/latest.json` |
+| 国内大众热榜 + 科技/AI 资讯 | [vikiboss/60s](https://github.com/vikiboss/60s) | `scripts/fetch_trends.py` 自动按序降级：`https://api.cczo.cc/60s`（首选）→ `https://60s.mizhoubaobei.top` → `https://60s.okbaike.com`；含 `/v2/douyin`、`/v2/weibo`、`/v2/bili`、`/v2/zhihu`、`/v2/toutiao`、`/v2/baidu/realtime`、`/v2/it-news`、`/v2/it-news/rank`、`/v2/ai-news`、`/v2/hacker-news/top` |
+| 国内外科技 / 开发者 / 财经热榜 | [ourongxing/newsnow](https://github.com/ourongxing/newsnow) 公共接口 | `https://newsnow.busiyi.world/api/s?id=<源>`（GitHub Trending、Product Hunt、Hacker News、华尔街见闻、财联社、IT之家、少数派、Solidot、联合早报，及国内热榜降级源） |
+| 科技巨头一手官方发布 & 权威外媒 | 官方直连 RSS / JSON | OpenAI、Google Blog、DeepMind、Apple Newsroom、NVIDIA Blog、GitHub Blog、Hugging Face、TechCrunch、The Verge、Ars Technica、少数派、HN Algolia API、Google News RSS（中/英）、Bing News RSS |
+| 热榜最终兜底 | [solarhell/hot-search-crawler](https://github.com/solarhell/hot-search-crawler) | `https://solarhell.github.io/hot-search-crawler/latest.json` |
+| 零 Key 免版权素材库 & 新闻抓图切片 | Wikimedia Commons、NASA Media API、Internet Archive、Openverse + 复用工作区 `playwright-core` & `yt-dlp` | `scripts/fetch_asset.py`（子命令：`news-page`、`stock`、`video-search`、`video-clip`、`register`） |
 
-2026-11-18 实测：60s 的抖音返回 49 条、微博 50 条；它的小红书接口 `/v2/rednote` 报 500；备用源的小红书榜被限流。所以小红书热度改用 CreatorHub 关键词采集来查。视频号没有找到免费的热榜来源。
+2026-11-20 实测记录：
+- `api.cczo.cc/60s` 与 `60s.mizhoubaobei.top` 上述 10 个 60s 接口全通（`/v2/ai-news` 超时需 ≥15s）；`newsnow` 国内外 15 个常用源全部 ~2.4s 返回；官方 RSS 清单中 11–12 个稳定秒返（已剔除 403/解析异常源）。
+- 各 60s 实例的 `/v2/rednote` 均报 500，小红书热度继续用 CreatorHub 关键词采集来查；视频号无免费公开热榜。
+- Wikimedia Commons 下载原图需遵守规范 `User-Agent` 并使用 `iiurlwidth=1920`（`fetch_asset.py` 已内置处理）。
 
 ## 可选：指纹浏览器内核
 

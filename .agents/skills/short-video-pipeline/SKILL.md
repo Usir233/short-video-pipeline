@@ -34,10 +34,10 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 | 步骤 | 仓库 | 本机位置 | 先读的 skill 或文档 |
 |---|---|---|---|
-| 选题（热榜） | [vikiboss/60s](https://github.com/vikiboss/60s)，备用 [solarhell/hot-search-crawler](https://github.com/solarhell/hot-search-crawler) | 不安装，直接调它们的公开接口 | 无 |
-| 选题（小红书热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
+| 选题（国内外热榜、科技大厂 RSS） | 60s Top-3、NewsNow、科技巨头官网 RSS、Google/Bing News RSS、备用 hot-search-crawler | 不安装，统一用 `scripts/fetch_trends.py` | [references/sourcing.md](references/sourcing.md) |
+| 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md` 及它指向的 `references/` |
-| 素材 | [openfilm/openfilm](https://github.com/openfilm/openfilm) | `node_modules/openfilm/` | `openfilm skill media` |
+| 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + 工作区脚本 | `node_modules/openfilm/`、`scripts/fetch_asset.py` | `openfilm skill media`、[references/sourcing.md](references/sourcing.md) |
 | 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`，`openfilm skill film`（兼容 `edit`） |
 | 分发 | 3441293738/creatorhub | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
 
@@ -124,17 +124,26 @@ runs/
 
 ## 步骤 1：选题（入口 A）
 
-1. 取热榜（需要联网）：
-   - 抖音 `https://60s.viki.moe/v2/douyin`，微博 `https://60s.viki.moe/v2/weibo`。读 `data[]` 的 `title`、`hot_value`、`link`。
-   - 不通时用 `https://solarhell.github.io/hot-search-crawler/latest.json`，读 `boards[].items[]`。
-   - 小红书没有可用的免费热榜：挑出 2–3 个候选后，用 CreatorHub 关键词采集查它们在小红书的热度（见 `references/creatorhub-api.md` 的「查热度」）。失败就跳过，不阻塞。
+完整的热点矩阵、降级顺序与脚本命令见 [references/sourcing.md](references/sourcing.md)。
+
+1. 取国内外热榜与科技资讯（需要联网）：
+   - 优先直接运行工作区脚本（先执行 `env.sh`）：
+     ```bash
+     python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode all --out runs/<目录>/topic
+     ```
+     按用户诉求可换 `--mode domestic`（国内大众）、`tech`（国内外科技/AI + 大厂一手 RSS）、`global`（海外科技）、`search --query "<关键词>"`（按主题实时搜国内外新闻）。
+   - 脚本内置 4 层源并自动降级，原样存成 `topic/hotlist-<mode>.json`：
+     - **L1 国内大众热榜**：60s 前三可用实例依次降级（`https://api.cczo.cc/60s` 首选 → `https://60s.mizhoubaobei.top` → `https://60s.okbaike.com`），取抖音 `/v2/douyin`、微博 `/v2/weibo`、B站 `/v2/bili`、知乎 `/v2/zhihu`、头条 `/v2/toutiao`、百度 `/v2/baidu/realtime`；全不通时自动降级到 NewsNow 国内源和 `https://solarhell.github.io/hot-search-crawler/latest.json`。
+     - **L2 国内外科技 / 开发者 / 财经**：NewsNow（GitHub Trending、Product Hunt、Hacker News、华尔街见闻、财联社、IT之家、少数派、Solidot、联合早报）+ 60s（`/v2/it-news`、`/v2/it-news/rank`、`/v2/ai-news` 超时 ≥15s）+ HN Algolia 官方 API。
+     - **L3 科技巨头一手官方发布 & 权威外媒**：OpenAI、Google、DeepMind、Apple Newsroom、NVIDIA、GitHub、Hugging Face、TechCrunch、The Verge、Ars Technica 官方直连 RSS，以及 Google News / Bing News RSS。
+   - **L4 平台内爆款交叉验证**：小红书没有可用的免费热榜；挑出 2–3 个候选后，用 CreatorHub 关键词采集（`search_sort: most_liked`, `publish_time: week`）查它们在小红书/抖音的实际互动热度（见 `references/creatorhub-api.md` 的「查热度」）。失败就跳过，不阻塞。
    - 视频号没有热榜来源，沿用选出的题。
 2. 筛选：
    - 跳过时政、领导人、外交、军事；灾难伤亡；未证实的传闻；针对具体个人的负面事件；医疗和投资建议。
    - 跳过 `runs/topics-log.jsonl` 里近 14 天做过的题。
-   - 在剩下的里选热度高、普通人关心、15–30 秒能讲清一个点的题。
+   - 在剩下的里优先选**跨平台同时上榜**或**海外/科技巨头刚发布、普通人关心、15–30 秒能讲清一个核心变化**的题。
 3. 筛完没有合适的：把榜单前 10 列给用户，等用户指定，不硬做。
-4. 取到的热榜和热度原样存成 `topic/hotlist-<来源>.json`，写 `topic/topic.json`，把运行目录改成正式名字。
+4. 热榜与热度结果存进 `topic/hotlist-<来源>.json`，写 `topic/topic.json`（附事实出处与官方原文链接），把运行目录改成正式名字。
 
 ## 步骤 2：复刻拆解（入口 C，或带「参考爆款」）
 
@@ -177,29 +186,32 @@ runs/
 
 ## 步骤 4：素材
 
-**先整篇读 `openfilm skill media`**（在 `film/` 目录里执行 `../../../node_modules/.bin/openfilm skill media`）。
+**先整篇读 `openfilm skill media`**（在 `film/` 目录里执行 `../../../node_modules/.bin/openfilm skill media`）及 [references/sourcing.md](references/sourcing.md)。
 
-每一镜按下面顺序取，能用前面的就不用后面的：
+按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
-1. **OpenFilm 本地与自带库**（免费、离线、CC0，含 `my-media`、`music-search`、`sfx-search`、`sticker`）：先查 `.local/openfilm-user/saved/` 里的已复用素材（`openfilm get my-media`）和 OpenFilm 自带的音乐、音效、贴纸。
-2. **代码画面**：标题、数字、清单、对比、图表、动效，直接写成 OpenFilm 页面。
-3. **agent 自行搜索公开素材（缺素材时自动补齐）**：当自带库和代码画面不足以覆盖所需实拍图、空镜、插画、图标、音效或配乐时，由当前 agent 自行联网搜索（或调用 OpenFilm 已接的素材搜索服务）获取**公开、可免费商用/CC0/无水印**的相关素材，下载并按规格裁剪/转码后放入对应的 OpenFilm 素材区（见下方「素材放哪里」）。
-4. **生成图片**：搜不到合适素材的场景、物品、氛围。用你自带的图片生成能力，或 OpenFilm 已接的服务（`openfilm get` 会列出当前能用的）。竖屏 9:16。
-5. **生成视频**：一条片子最多 2 镜，每镜不超过 6 秒。来源同上。
+- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
+- **B. 数据对比、参数表、清单、金句标题、流程动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）。
+- **C. 科技巨头发布新闻 / 产品报道 / 真实事件画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再由当前 agent 调用 `scripts/fetch_asset.py` 主动抓取并落盘到 OpenFilm 素材区：
+  - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、按需截 1080px 干净官网首屏；
+  - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
+- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → 已配免费 Key 时用 OpenFilm 内置 **Pexels / Pixabay**（用 2–4 个英文视觉关键词，视频加 `--orientation portrait`）→ 未配 Key 或缺图时用 `fetch_asset.py stock` 查免 Key 公开免版权库（Wikimedia Commons、NASA、Internet Archive、Openverse）。
+- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类代码画面。
 
 素材放哪里：
 
-- 搜索下载的原始文件、生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选，放运行目录的 `materials/`。工具或浏览器把文件存到了工作区之外时，立刻移进来，外面不留。
-- **本次成片实际用到的那一份放进 OpenFilm 项目素材区 `film/assets/`**（供 `film.html` 直接引用）。OpenFilm 的 `--take` 会自己把自带库的东西放进这里。按 OpenFilm skill 的要求，`film/assets/` 里只留成片用得上的。
-- **可跨视频复用的通用素材**（如通用空镜、配乐、音效、纹理、贴纸/图标），同步复制一份放进 OpenFilm 公共素材区 **`.local/openfilm-user/saved/`**（环境变量 `$OPENFILM_SAVED`），方便后续视频直接通过 `openfilm get my-media` 检索复用。
+- 搜索下载的原始文件、新闻网页截图原图、生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选，放运行目录的 `materials/`。工具或浏览器把文件存到了工作区之外时，立刻移进来，外面不留。
+- **本次成片实际用到的那一份放进 OpenFilm 项目素材区 `film/assets/`**（供 `film.html` 直接引用）。OpenFilm 的 `--take` 会自己把自带库的东西放进这里；其他素材可用 `fetch_asset.py register` 一键落盘并登记。按 OpenFilm skill 的要求，`film/assets/` 里只留成片用得上的。
+- **可跨视频复用的通用素材**（如通用空镜、配乐、音效、纹理、贴纸/图标），同步复制一份放进 OpenFilm 公共素材区 **`.local/openfilm-user/saved/`**（环境变量 `$OPENFILM_SAVED`，`fetch_asset.py` 加 `--save-reusable`），方便后续视频直接通过 `openfilm get my-media` 检索复用。
 
 约束：
 
 - 不生成真实人物的肖像、真实品牌的标志、伪造的新闻画面或截图。
-- 不把别人的短视频成片或带水印/未授权的搬运片段当素材。CreatorHub 采集和下载到的参考视频只进 `ref/`；自行搜索素材时只取无水印、允许免费使用的公开素材源（如 CC0 / 公有领域 / 明确免版税图库与音效库）。
+- 新闻/科技发布类素材只取**官方新闻室、官方博客、官方频道发布/Demo（≤6 秒）或权威媒体原文的真实配图与截图**，并在画面角落或说明中清晰标注来源（如“来源：Apple Newsroom”）。
+- 不把别人的二次创作短视频成片、搬运片段或带平台/图库水印的画面当素材。CreatorHub 采集和下载到的参考视频只进 `ref/`；通用图库素材只取无水印、允许免费使用的公开源。
 - 会另外收费的生成或付费素材（OpenFilm 标了 at a cost 的、外部付费服务）先告诉用户费用并等同意。agent 自带的搜索和生成能力不在此列。
 - 某一镜的搜索或生成失败、不可用时，改用代码画面，流程继续。
-- 每个素材的来源（搜索链接与许可说明，或生成提示词）记进 `film/assets/credits.json`，`materials/` 里的原件和同步进 `.local/openfilm-user/saved/` 的复用件也记上对应关系。
+- 每个素材的来源（原文/搜索链接与许可说明，或生成提示词）记进 `film/assets/credits.json`，`materials/` 里的原件和同步进 `.local/openfilm-user/saved/` 的复用件也记上对应关系（使用相对路径，不写死绝对路径）。
 
 ## 步骤 5：剪辑和渲染
 
@@ -270,9 +282,9 @@ runs/
 
 | 你做不到 | 怎么办 |
 |---|---|
-| 联网搜索 | 只做不依赖具体数据的题；需要数据时请用户提供资料 |
+| 联网搜索 | 只要本机有外网，仍可用 `scripts/fetch_trends.py --mode search` 和 `scripts/fetch_asset.py` 查新闻与抓素材；完全离线时只做不依赖具体数据的题或请用户提供资料 |
 | 看图 | rea-video 按它 `references/review.md` 的「看不了图时的规则」做；OpenFilm 画面无法目检，做到步骤 5 停下，不自动发布，并说明画面没有目检 |
-| 生成图片或视频 | 先由 agent 自行搜索公开无水印素材放入 OpenFilm 素材区（`film/assets/`、可复用的同步放 `.local/openfilm-user/saved/`），或用 OpenFilm 已接的服务；都没有再退回自带库和代码画面 |
+| 生成图片或视频 | 按 [references/sourcing.md](references/sourcing.md) 走 `scripts/fetch_asset.py`（官方新闻配图/截图/短切片、免版权公开图库）和 OpenFilm 内置 Pexels/Pixabay；仍无素材再退回自带库和代码画面 |
 | 派子代理 | 自己按顺序做 |
 
 ## 不要做的事
