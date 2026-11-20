@@ -11,7 +11,7 @@
 用户已定：配套仓库和它们带来的一切，都装在本工作区的目录下。
 
 - 不全局安装：不用 `npm install -g`、`sudo`、`pip install --user`，不往系统 Python 里装包，不用系统包管理器装东西。
-- 不改 PATH、不改 shell 配置文件、不建全局命令。命令一律用工作区里的路径调用（`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`）。
+- 不改全局 shell 配置文件、不建全局命令。命令优先用工作区里的路径调用（`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`）；执行 `env.sh` 时仅在当前 shell 会话中把 `$SVP_ROOT/node_modules/.bin` 置顶到 `PATH`，避免直接敲 `openfilm` 误命中工作区外的全局版本。
 - 不运行各仓库里往工作区之外安装的脚本（例如 rea-video 的 `scripts/install_skill.sh`）。
 - **每个 shell 里先执行环境脚本，再执行下面任何命令：**
 
@@ -25,12 +25,13 @@
   |---|---|---|---|
   | `OPENFILM_HOME` | `.local/openfilm/` | OpenFilm 的设置、服务连接、日志、库缓存 | `~/.openfilm` |
   | `OPENFILM_LIBRARY`、`OPENFILM_EXPORTS` | `runs/` | 没指定位置时的项目目录和导出目录 | `~/Movies/OpenFilm`、桌面 |
-  | `OPENFILM_SAVED`、`OPENFILM_SKILLS` | `.local/openfilm-user/` | 在 OpenFilm 里「保存」的片段、用户自己的 skill | `~/Movies/OpenFilm` |
+  | `OPENFILM_SAVED`、`OPENFILM_SKILLS` | `.local/openfilm-user/` | OpenFilm 公共素材区（`saved/`，可跨视频通过 `openfilm get my-media` 复用）、用户自己的 skill | `~/Movies/OpenFilm` |
   | `REA_VIDEO_MODELS` | `.local/rea-video/models/` | rea-video 的模型 | `~/.cache/rea-video/models` |
   | `REA_VIDEO_HOME` | `.local/rea-video/home/` | rea-video 的记忆文件 | `~/.rea-video` |
   | `PLAYWRIGHT_BROWSERS_PATH` | `browsers/ms-playwright/` | OpenFilm 渲染和 CreatorHub 用的浏览器内核 | 用户缓存目录下的 `ms-playwright` |
   | `npm_config_cache`、`PIP_CACHE_DIR` | `.local/npm-cache/`、`.local/pip-cache/` | 包管理器的下载缓存 | `~/.npm`、用户缓存目录 |
   | `SVP_ROOT` | 工作区根目录的绝对路径 | 给需要绝对路径的接口用 | — |
+  | `PATH`（仅当前 shell） | 前置 `$SVP_ROOT/node_modules/.bin` | 确保当前 shell 中直接运行 `openfilm` 也命中工作区局部版 | 命中工作区外全局 `openfilm` |
 
   启动 CreatorHub 的那个 shell 也必须先执行它，否则 CreatorHub 会到用户缓存目录里找浏览器内核。
 
@@ -122,7 +123,7 @@ git -C creatorhub pull --ff-only
 更新后必须做：
 
 1. 跑一遍下面的「装完后的验证」。
-2. 重新读各仓库的 skill（`openfilm skill edit`、`openfilm skill media`、`rea-video/skills/rea-video/SKILL.md`），做法变了以新的为准。
+2. 重新读各仓库的 skill（`openfilm skill film`、`openfilm skill media`、`rea-video/skills/rea-video/SKILL.md`），做法变了以新的为准。
 3. 按 [creatorhub-api.md](creatorhub-api.md) 开头写的办法重新核对接口。
 4. 把 [repos.md](repos.md) 里各仓库的「上次核对」改成当前版本和日期。
 

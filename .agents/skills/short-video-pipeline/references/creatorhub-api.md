@@ -1,6 +1,6 @@
 # CreatorHub 接口（分发相关）
 
-依据：`creatorhub/app/main.py`。**核对时的提交：`a902546`**（v0.2.8，2026-11-18）。
+依据：`creatorhub/app/main.py`。**核对时的提交：`27b9b8e`**（v0.2.9+1，2026-11-20）。
 
 CreatorHub 用的是最新版，本文件可能落后于它。每次发布前执行 `git -C creatorhub rev-parse --short HEAD`，和上面的提交号比较：
 
@@ -9,7 +9,7 @@ CreatorHub 用的是最新版，本文件可能落后于它。每次发布前执
 
 - 地址：`http://127.0.0.1:8000`，只监听本机，默认不需要鉴权。
 - 请求体和返回都是 JSON，上传文件除外。
-- 平台标识：`douyin` 抖音、`xhs` 小红书、`shipinhao` 视频号、`kuaishou` 快手、`tiktok`。
+- 平台标识：`douyin` 抖音、`xhs` 小红书、`shipinhao` 视频号、`kuaishou` 快手、`tiktok`、`bilibili` 哔哩哔哩。
 
 ## 查账号
 
@@ -50,7 +50,7 @@ curl -fsS -F "files=@runs/<目录>/output/final.mp4" http://127.0.0.1:8000/api/p
 | `account_id` | 是 | 来自「查账号」 |
 | `media_type` | 是 | 视频填 `video`（默认值是 `images`，不填会错） |
 | `media_paths` | 是 | `["<上一步的 path>"]` |
-| `title` | 建议 | 视频号最多 16 字，其余最多 20 字，超出会被直接截断 |
+| `title` | 建议 | 抖音最多 30 字，视频号最多 16 字，哔哩哔哩最多 80 字，其余（小红书等）最多 20 字，超出会被直接截断 |
 | `desc` | 建议 | 正文 |
 | `topics` | 建议 | 话题，英文逗号分隔，不带 `#`，例如 `"生活常识,科普"` |
 | `visibility` | 否 | `public`（默认）、`friends`、`private`，抖音有效 |
@@ -78,7 +78,7 @@ curl -fsS -X POST http://127.0.0.1:8000/api/publish \
 | 400 请选择一个已登录的账号 | 账号 id 不存在或平台不支持 |
 | 400 没有可用的媒体文件 | `media_paths` 里的文件不存在，先上传 |
 | 400 该账号不可发布 | 抖音、视频号未登录；小红书没有创作者登录 |
-| 422 | 小红书的文件校验没过（视频只能 1 个文件，不超过 1 GiB），或 `scheduled_at` 格式不对 |
+| 422 | 小红书的文件校验没过（视频只能 1 个文件，不超过 1 GiB）、非小红书平台的媒体文件为空，或 `scheduled_at` 格式不对 |
 
 ### 3. 立即执行
 
@@ -193,7 +193,7 @@ curl -fsS -X POST http://127.0.0.1:8000/api/publish \
 
 没有用户另外的明确要求，不要调：
 
-- `POST /api/contents/{id}/repost-xhs`、`repost-douyin`、`repost-shipinhao`：把采集到的别人的作品转发到自己账号。
+- `POST /api/contents/{id}/repost-xhs`、`repost-douyin`、`repost-shipinhao`、`repost-kuaishou`、`repost-tiktok`、`repost-bilibili`：把采集到的别人的作品转发到自己账号。
 - 私信、评论、关注相关的接口。
 - `DELETE /api/accounts/{id}`，以及改代理、改指纹、改浏览器内核的接口。
 - `POST /api/accounts/{id}/clear-write-pause`：解除写暂停。暂停是风控保护，由用户决定。

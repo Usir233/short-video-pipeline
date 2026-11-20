@@ -38,7 +38,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 | 选题（小红书热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md` 及它指向的 `references/` |
 | 素材 | [openfilm/openfilm](https://github.com/openfilm/openfilm) | `node_modules/openfilm/` | `openfilm skill media` |
-| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/MANUAL.md`，`openfilm skill edit` |
+| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`，`openfilm skill film`（兼容 `edit`） |
 | 分发 | 3441293738/creatorhub | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
 
 CreatorHub 仓库里没有给 agent 的 skill，它的接口整理在 `references/creatorhub-api.md`。
@@ -85,7 +85,7 @@ runs/
     │   └── out/                  rea-video 的拆片包
     ├── script/
     │   └── storyboard.json       脚本和分镜
-    ├── materials/                素材原件：生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选
+    ├── materials/                素材原件：搜索下载或生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选
     ├── film/                     OpenFilm 项目
     │   ├── film.html 和各镜页面
     │   └── assets/               成片实际用到的素材，外加 credits.json（每个素材的来源和提示词）
@@ -150,8 +150,8 @@ runs/
    - 用户给了本地文件：复制进来。
    - 用户给了链接或分享文案：用 CreatorHub 的「下载分享链接」，`output_dir` 填运行目录里 `ref/` 的绝对路径（`$SVP_ROOT/runs/<目录>/ref`）。
    - 「参考爆款」：用 CreatorHub 关键词采集找到该题下点赞最高的视频，再用它的链接下载。
-2. 在运行目录里，先执行环境脚本（`. ../../.agents/skills/short-video-pipeline/scripts/env.sh`），再执行 `../../rea-video/.venv/bin/rea-video decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
-3. 按 rea-video skill 说的顺序读拆片包：`ref/out/VIDEO.md` → `video/content.md`（叙事线）→ `video/timeline.md` → `video/packaging.md` → `video/sound.md` → `video/remake.md`。不要读 `breakdown.json`。
+2. 在运行目录里，先执行环境脚本（`. ../../.agents/skills/short-video-pipeline/scripts/env.sh`），再按 `rea-video` skill 执行 `survey`（能看图且未开 VLM 时先看后拆）和 `../../rea-video/.venv/bin/rea-video decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
+3. 按 rea-video skill 说的顺序读拆片包：`ref/out/VIDEO.md` → `video/content.md`（叙事线）→ `video/timeline.md` / `video/rhythm.md` → `video/packaging.md` → `video/sound.md` → `video/remake.md`。不要读 `breakdown.json`。
 4. 写出要保留的东西，记进 `script/storyboard.json` 的 `reference` 字段：
    - 叙事线：每一段在抓注意、交代背景、给证据、转折还是给结论。
    - 节奏：总时长、每镜时长、切点是否卡节拍。
@@ -181,27 +181,29 @@ runs/
 
 每一镜按下面顺序取，能用前面的就不用后面的：
 
-1. **OpenFilm 自带库**（免费、离线、CC0）：音乐、音效、转场、特效、滤镜、贴纸、文字动画、模板。先在这里找，再考虑自己写。
+1. **OpenFilm 本地与自带库**（免费、离线、CC0，含 `my-media`、`music-search`、`sfx-search`、`sticker`）：先查 `.local/openfilm-user/saved/` 里的已复用素材（`openfilm get my-media`）和 OpenFilm 自带的音乐、音效、贴纸。
 2. **代码画面**：标题、数字、清单、对比、图表、动效，直接写成 OpenFilm 页面。
-3. **生成图片**：场景、物品、氛围。用你自带的图片生成能力，或 OpenFilm 已接的服务（`openfilm get` 会列出当前能用的）。竖屏 9:16。
-4. **生成视频**：一条片子最多 2 镜，每镜不超过 6 秒。来源同上。
+3. **agent 自行搜索公开素材（缺素材时自动补齐）**：当自带库和代码画面不足以覆盖所需实拍图、空镜、插画、图标、音效或配乐时，由当前 agent 自行联网搜索（或调用 OpenFilm 已接的素材搜索服务）获取**公开、可免费商用/CC0/无水印**的相关素材，下载并按规格裁剪/转码后放入对应的 OpenFilm 素材区（见下方「素材放哪里」）。
+4. **生成图片**：搜不到合适素材的场景、物品、氛围。用你自带的图片生成能力，或 OpenFilm 已接的服务（`openfilm get` 会列出当前能用的）。竖屏 9:16。
+5. **生成视频**：一条片子最多 2 镜，每镜不超过 6 秒。来源同上。
 
 素材放哪里：
 
-- 生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选，放运行目录的 `materials/`。生成工具把文件存到了工作区之外时，移进来，外面不留。
-- 成片实际用到的那一份放 `film/assets/`。OpenFilm 的 `--take` 会自己把自带库的东西放进这里。按 OpenFilm skill 的要求，`film/assets/` 里只留成片用得上的。
+- 搜索下载的原始文件、生成工具给出的原始文件、裁剪转码前的文件、没被采用的备选，放运行目录的 `materials/`。工具或浏览器把文件存到了工作区之外时，立刻移进来，外面不留。
+- **本次成片实际用到的那一份放进 OpenFilm 项目素材区 `film/assets/`**（供 `film.html` 直接引用）。OpenFilm 的 `--take` 会自己把自带库的东西放进这里。按 OpenFilm skill 的要求，`film/assets/` 里只留成片用得上的。
+- **可跨视频复用的通用素材**（如通用空镜、配乐、音效、纹理、贴纸/图标），同步复制一份放进 OpenFilm 公共素材区 **`.local/openfilm-user/saved/`**（环境变量 `$OPENFILM_SAVED`），方便后续视频直接通过 `openfilm get my-media` 检索复用。
 
 约束：
 
 - 不生成真实人物的肖像、真实品牌的标志、伪造的新闻画面或截图。
-- 不把别人的成片或片段当素材。采集和下载到的内容只进 `ref/`。
-- 会另外收费的生成（OpenFilm 标了 at a cost 的、外部付费服务）先告诉用户费用并等同意。agent 自带的生成能力不在此列。
-- 某一镜的生成失败或不可用时，改用代码画面，流程继续。
-- 每个素材的来源和提示词记进 `film/assets/credits.json`，`materials/` 里的原件也记上对应关系。
+- 不把别人的短视频成片或带水印/未授权的搬运片段当素材。CreatorHub 采集和下载到的参考视频只进 `ref/`；自行搜索素材时只取无水印、允许免费使用的公开素材源（如 CC0 / 公有领域 / 明确免版税图库与音效库）。
+- 会另外收费的生成或付费素材（OpenFilm 标了 at a cost 的、外部付费服务）先告诉用户费用并等同意。agent 自带的搜索和生成能力不在此列。
+- 某一镜的搜索或生成失败、不可用时，改用代码画面，流程继续。
+- 每个素材的来源（搜索链接与许可说明，或生成提示词）记进 `film/assets/credits.json`，`materials/` 里的原件和同步进 `.local/openfilm-user/saved/` 的复用件也记上对应关系。
 
 ## 步骤 5：剪辑和渲染
 
-**先读 `node_modules/openfilm/MANUAL.md`，再整篇读 `openfilm skill edit`**，按它的做法建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
+**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`），再整篇读 `openfilm skill film`（兼容 `edit`）**，按它的做法建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
 
 本工作区的约定：
 
@@ -270,7 +272,7 @@ runs/
 |---|---|
 | 联网搜索 | 只做不依赖具体数据的题；需要数据时请用户提供资料 |
 | 看图 | rea-video 按它 `references/review.md` 的「看不了图时的规则」做；OpenFilm 画面无法目检，做到步骤 5 停下，不自动发布，并说明画面没有目检 |
-| 生成图片或视频 | 用 OpenFilm 已接的服务；也没有就全部用自带库和代码画面 |
+| 生成图片或视频 | 先由 agent 自行搜索公开无水印素材放入 OpenFilm 素材区（`film/assets/`、可复用的同步放 `.local/openfilm-user/saved/`），或用 OpenFilm 已接的服务；都没有再退回自带库和代码画面 |
 | 派子代理 | 自己按顺序做 |
 
 ## 不要做的事

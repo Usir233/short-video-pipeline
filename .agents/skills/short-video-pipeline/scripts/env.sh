@@ -42,5 +42,13 @@ export PLAYWRIGHT_BROWSERS_PATH="$SVP_ROOT/browsers/ms-playwright"
 export npm_config_cache="$SVP_ROOT/.local/npm-cache"
 export PIP_CACHE_DIR="$SVP_ROOT/.local/pip-cache"
 
-mkdir -p "$OPENFILM_HOME" "$REA_VIDEO_MODELS" "$REA_VIDEO_HOME" \
+# 仅在当前 shell 会话中把工作区的 node_modules/.bin 放到 PATH 最前，
+# 避免直接执行 openfilm 时误命中工作区外的全局版本（不改动任何 shell 配置文件）。
+case ":$PATH:" in
+  *":$SVP_ROOT/node_modules/.bin:"*) ;;
+  *) export PATH="$SVP_ROOT/node_modules/.bin:$PATH" ;;
+esac
+
+mkdir -p "$OPENFILM_HOME" "$OPENFILM_SAVED" "$OPENFILM_SKILLS" \
+  "$REA_VIDEO_MODELS" "$REA_VIDEO_HOME" \
   "$PLAYWRIGHT_BROWSERS_PATH" "$npm_config_cache" "$PIP_CACHE_DIR" "$SVP_ROOT/runs"
