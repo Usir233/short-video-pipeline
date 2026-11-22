@@ -40,6 +40,7 @@
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
 | `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
+| `assets/brand/` | 是 | 品牌静态素材（如透明底品牌 Logo `logo.png`），随本仓库进入 git；制作视频时按需复制进 `runs/<目录>/film/assets/` |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
@@ -50,18 +51,19 @@
 
 参考文件：
 
-- `references/repos.md`：配套仓库、命令入口、要读的 skill
+- `references/repos.md`：配套仓库及其自带文档/Skill 的相对路径索引（不再手抄上游用法与版本号）
 - `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
-- `references/creatorhub-api.md`：分发用到的接口
+- `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定与安全红线（具体接口与平台能力直接查 `creatorhub/` 文档及实时 `/openapi.json`）
+- `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/合规校验、分平台表单硬规则与自动修正/阻断机制）
 
 ## 检索范围与提速约定（面向所有 Agent）
 
 本工作区包含大量本地依赖、浏览器内核、模型缓存与视频文件（约 4 GB+）。无论使用 **Antigravity、Codex、Claude Code 还是 Cursor**：
 
 - 不要对整个工作区或 `browsers/`、`.local/`、`**/.venv/`、`creatorhub/data/`、`creatorhub/node_modules/`、`creatorhub/desktop/`、`creatorhub/frontend/`、`node_modules/openfilm/library/` 做全量递归扫描。
-- 核对或查询 CreatorHub 接口时，优先读 `.agents/skills/short-video-pipeline/references/creatorhub-api.md` 或查询运行中的 `http://127.0.0.1:8000/openapi.json`，必要时只读 `creatorhub/app/api/` 下对应的单个文件。
-- 仅按明确路径访问所需文件：`runs/<目录>/`、`rea-video/skills/`、`node_modules/openfilm/`（`SYSTEM_PROMPT.md`、`SPEC.md`、`manual/`）。
+- 查询任何配套工具的用法、能力或接口时，直接按 `references/repos.md` 中的相对路径读取该工具自带文档（`node_modules/openfilm/`、`rea-video/`、`creatorhub/`）或运行中的 `http://127.0.0.1:8000/openapi.json`，不要全量扫描其源码目录。
+- 仅按明确路径访问所需文件：`runs/<目录>/`、`rea-video/`（`AGENTS.md`、`README.md`、`skills/`、`docs/`）、`node_modules/openfilm/`（`SYSTEM_PROMPT.md`、`README.md`、`SPEC.md`、`manual/`）、`creatorhub/`（`README.md`、`guide/`、`app/api/`、`app/transport_matrix.py`、`app/platforms/`）。
 
 ## 不要做的事
 

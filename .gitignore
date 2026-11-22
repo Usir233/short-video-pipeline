@@ -13,5 +13,8 @@
 !/AGENTS.md
 !/CLAUDE.md
 !/.agents/
+!/assets/
+/assets/*
+!/assets/brand/
 !/package.json
 .DS_Store

@@ -30,18 +30,18 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 ## 用到的仓库
 
-每一步用哪个仓库、读它的哪个 skill，写在下表。**进入某一步之前，先把该仓库的 skill 整篇读完再动手**，按它的做法做。配套仓库一律用最新版本，不固定版本。命令入口见 [references/repos.md](references/repos.md)，新环境的安装和已有环境的更新见 [references/setup.md](references/setup.md)。用户说「更新配套仓库」时，按 `setup.md` 的「更新已有环境」做。
+每一步用哪个仓库、读它自带的哪个文档/skill，写在下表。**进入某一步之前，直接按相对路径读取该工具最新的自带文档或实时接口**，做法随上游更新自动生效，不依赖手抄缓存。完整文档路径索引见 [references/repos.md](references/repos.md)，安装和更新见 [references/setup.md](references/setup.md)。
 
-| 步骤 | 仓库 | 本机位置 | 先读的 skill 或文档 |
+| 步骤 | 仓库 | 本机位置 | 直接读取的相对文档 / Skill 路径 |
 |---|---|---|---|
-| 选题（国内外热榜、科技大厂 RSS） | 60s Top-3、NewsNow、科技巨头官网 RSS、Google/Bing News RSS、备用 hot-search-crawler | 不安装，统一用 `scripts/fetch_trends.py` | [references/sourcing.md](references/sourcing.md) |
-| 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
-| 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md` 及它指向的 `references/` |
-| 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + 工作区脚本 | `node_modules/openfilm/`、`scripts/fetch_asset.py` | `openfilm skill media`、[references/sourcing.md](references/sourcing.md) |
-| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`，`openfilm skill film`（兼容 `edit`） |
-| 分发 | 3441293738/creatorhub | `creatorhub/` | [references/creatorhub-api.md](references/creatorhub-api.md) |
+| 选题（国内外热榜、科技大厂 RSS） | 本工作区脚本 `scripts/fetch_trends.py` | `.agents/skills/short-video-pipeline/scripts/` | [references/sourcing.md](references/sourcing.md) |
+| 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
+| 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md`、`rea-video/skills/rea-video/references/`、`rea-video/docs/` |
+| 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
+| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` |
+| 分发 | 3441293738/creatorhub | `creatorhub/` | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）、[references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
 
-CreatorHub 仓库里没有给 agent 的 skill，它的接口整理在 `references/creatorhub-api.md`。
+各配套仓库的具体命令、参数和能力边界一律以上述相对路径里的项目自身文档为准；本文件及 `references/` 只保留本工作区的目录规范、串联顺序与安全红线，不再单独手抄维护上游工具明细。
 
 ## 四种入口
 
@@ -94,7 +94,7 @@ runs/
     │   ├── final.mp4             成片
     │   └── check/                出片自检的记录：看过的帧图、ffprobe 的输出、check.json
     ├── publish/
-    │   └── publish.json          各平台的标题、正文、话题、任务 id、结果、作品链接
+    │   └── publish.json          各平台的标题、正文、话题、发布前审核结论（audit）、任务 id、结果、作品链接
     └── tmp/                      草稿和中间文件，运行结束时删掉
 ```
 
@@ -189,7 +189,7 @@ runs/
 
 **先整篇读 `openfilm skill media`**（在 `film/` 目录里执行 `../../../node_modules/.bin/openfilm skill media`）及 [references/sourcing.md](references/sourcing.md)。
 
-> **前置动作**：OpenFilm 0.4.1 执行 `openfilm get --take` 前要求目录已是项目，否则会报 `is not in a project`。先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。
+> **前置动作**：OpenFilm 执行 `openfilm get --take` 前若要求目录已是项目（否则报 `is not in a project`），先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。具体命令写法以 `node_modules/openfilm/manual/` 为准。
 
 按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
@@ -245,15 +245,16 @@ runs/
 
 带「先给我看」「只做不发」时跳过。
 
-**按 [references/creatorhub-api.md](references/creatorhub-api.md) 的「Agent 调用方式」和「标准发布顺序」做**，那里有接口、参数、状态和各种失败的处理办法。要点：
+> **强制发布前审核门禁**：调用任何平台的 `POST /api/publish` 建任务之前，**必须先按 [references/publish-audit.md](references/publish-audit.md) 完成逐平台发布前审核**（涵盖通用媒体/文本/话题/合规/账号检查与分平台硬性表单校验）。可自动修正的格式问题须修正并复审通过后再建任务；存在未通过的硬性阻断项时**严禁建任务**。
 
-- 先按它开头写的办法，核对接口文档和当前 CreatorHub 版本是否一致。
-- **优先走本机 REST API**（`http://127.0.0.1:8000/api/...`）：抖音、小红书、视频号都统一通过本机 API 触发，由 CreatorHub 内部自动拉起隔离浏览器完成上传提交（工作台矩阵里的「API 不可用 / 浏览器可用」是指 CreatorHub 内部对平台的通道，不影响调本机 API）。需要查询文档未列出的接口时，直接查实时 `http://127.0.0.1:8000/openapi.json`。
+**按 [references/creatorhub-api.md](references/creatorhub-api.md) 的文档索引与调用约定做**；具体字段和各平台能力直接以运行中的 `http://127.0.0.1:8000/openapi.json`、`creatorhub/guide/platforms.json` 和 `creatorhub/app/api/publishing.py` 为准。要点：
+
+- **优先走本机 REST API**（`http://127.0.0.1:8000/api/...`）：抖音、小红书、视频号都统一通过本机 API 触发，由 CreatorHub 内部自动拉起隔离浏览器完成上传提交（工作台矩阵里的「API 不可用 / 浏览器可用」是指 CreatorHub 内部对平台的通道，不影响调本机 API）。
 - **API 异常或不全时用 8000 网页端排查**：当本机 API 不可用、报错不明确或缺少某项状态/诊断能力时，允许并建议 agent 打开 `http://127.0.0.1:8000` 前端工作台页面查看和点击定位原因（仍须遵守不删账号、不改代理/指纹/浏览器内核、不强行解除写暂停、不重试 `uncertain`、不外泄敏感信息的红线；需要扫码或人机验证时停下通知用户）。
-- 每个平台各写一份标题、正文、话题，写进 `publish/publish.json`。任务 id、状态、作品链接拿到后也写回这个文件。
-- 建立任务就等于提交发布，建之前确认自检已通过（入口 D 确认已有成片 `ffprobe` 规格正常）。
-- **逐平台串行（IDE 终端优先非阻塞轮询）**：成片上传一次后，对每个平台依次「建任务 → 执行并等待终态」，一个平台结束后再建下一个平台，避免与后台引擎并发抢跑；在 Cursor 等易触发终端超时的环境里，建完任务后不要死卡 `run-now`，改用间隔轮询 `GET /api/publish` 的 `status` 与 `live_stage` 等待结束。
-- 状态是「结果待确认（`uncertain`）」时不重试、不删除、不修改，交给用户去平台核对。
+- 每个平台各写一份标题、正文、话题，与发布前审核结论一起写进 `publish/publish.json`——必须保留 `audit` 字段（是否通过、逐项检查结果、自动修正前后的标题/文案差异）；任务 id、状态、作品链接拿到后也写回这个文件。
+- 建立任务就等于提交发布，建之前必须确认「出片自检（入口 D 为 `ffprobe` 规格核对）+ 发布前审核（`publish-audit.md`）」两道门禁均已通过。
+- **逐平台串行（IDE 终端优先非阻塞轮询）**：成片上传一次后，对每个通过审核的平台依次「建任务 → 执行并等待终态」，一个平台结束后再建下一个平台，避免与后台引擎并发抢跑；在 Cursor 等易触发终端超时的环境里，建完任务后不要死卡 `run-now`，改用间隔轮询 `GET /api/publish` 的 `status` 与 `live_stage` 等待结束。
+- 状态是「结果待确认（`uncertain`）」时不重试、不删除、不修改，交给用户去平台核对；若排查发现新的平台表单校验规则，须同步沉淀到 [references/publish-audit.md](references/publish-audit.md) 的「实测踩坑补充」。
 
 ## 步骤 7：记录和汇报
 

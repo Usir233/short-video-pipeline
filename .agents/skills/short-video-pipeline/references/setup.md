@@ -90,7 +90,7 @@ curl -fsS http://127.0.0.1:8000/health
 
 `install` 会建它自己的虚拟环境（`creatorhub/.venv`）、下载浏览器组件（执行过环境脚本后下载到 `browsers/ms-playwright/`）、生成 `config.yaml`，需要联网，耗时较长。`start` 也要在执行过环境脚本的 shell 里运行。
 
-装完后按 [creatorhub-api.md](creatorhub-api.md) 开头写的办法，核对接口文档和当前版本是否一致。
+装完后确认 `http://127.0.0.1:8000/health` 与 `http://127.0.0.1:8000/openapi.json` 均可正常返回；具体平台能力与接口定义直接参考 `creatorhub/README.md`、`creatorhub/guide/platforms.json` 和实时 `/openapi.json`（见 [creatorhub-api.md](creatorhub-api.md)）。
 
 ## 更新已有环境
 
@@ -123,9 +123,7 @@ git -C creatorhub pull --ff-only
 更新后必须做：
 
 1. 跑一遍下面的「装完后的验证」。
-2. 重新读各仓库的 skill（`openfilm skill film`、`openfilm skill media`、`rea-video/skills/rea-video/SKILL.md`），做法变了以新的为准。
-3. 按 [creatorhub-api.md](creatorhub-api.md) 开头写的办法重新核对接口。
-4. 把 [repos.md](repos.md) 里各仓库的「上次核对」改成当前版本和日期。
+2. 确认各配套仓库的最新文档与接口入口可读（`node_modules/openfilm/SYSTEM_PROMPT.md`、`rea-video/skills/rea-video/SKILL.md`、`creatorhub/guide/platforms.json` 以及 `http://127.0.0.1:8000/openapi.json`）。后续执行任务时直接以各仓库最新自带文档和实时接口为准，无需手工修改本工作区的参考文档。
 
 ## 需要用户亲自做的事
 

@@ -27,10 +27,10 @@
 
 | 候选方案 | 优点 | 缺点 / 淘汰原因 | 结论 |
 |---|---|---|---|
-| **OpenFilm 0.4.1（自带库 + 免费 Pexels/Pixabay + 代码画面） + 工作区已有 `playwright-core` 抓新闻页/截图 + 工作区已有 `yt-dlp` 切官方 Demo + 零 Key 公开库（Wikimedia/NASA/Archive/Openverse）** | 零新增重型依赖；同时解决**科技巨头新闻官方图/网页截图/发布会短切片**与**通用免版权 B-roll**；下载即归档至 `materials/`、`film/assets/`、`.local/openfilm-user/saved/` 并自动记 `credits.json` | 通用高清竖屏 B-roll 在配好免费 Pexels/Pixabay Key 后质感最佳（未配前走 Wikimedia/NASA/代码画面兜底） | **选定主力** |
+| **OpenFilm（自带库 + 免费 Pexels/Pixabay + 代码画面） + 工作区已有 `playwright-core` 抓新闻页/截图 + 工作区已有 `yt-dlp` 切官方 Demo + 零 Key 公开库（Wikimedia/NASA/Archive/Openverse）** | 零新增重型依赖；同时解决**科技巨头新闻官方图/网页截图/发布会短切片**与**通用免版权 B-roll**；下载即归档至 `materials/`、`film/assets/`、`.local/openfilm-user/saved/` 并自动记 `credits.json` | 通用高清竖屏 B-roll 在配好免费 Pexels/Pixabay Key 后质感最佳（未配前走 Wikimedia/NASA/代码画面兜底） | **选定主力** |
 | `unclecode/crawl4ai` | 动态网页抽取强 | 依赖极重（数十个 Python 包且与工作区 Playwright 重复） | 用工作区已有 `playwright-core` 轻量实现替代 |
 | `searxng/searxng` | 多引擎聚合 | 需常驻后端服务（常需 Docker） | 不引入 |
-| 通用图库 MCP（`stocky` 等） | 方便单家客户端调用 | 绑定特定 MCP 客户端配置；OpenFilm 0.4.1 本身已内置 `pexels.mjs` 与 `pixabay.mjs` | 优先直接用 OpenFilm 内置能力，保持 agent 无关 |
+| 通用图库 MCP（`stocky` 等） | 方便单家客户端调用 | 绑定特定 MCP 客户端配置；OpenFilm 本身已内置 Pexels 与 Pixabay 能力 | 优先直接用 OpenFilm 内置能力，保持 agent 无关 |
 
 ---
 
