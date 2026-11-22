@@ -1,0 +1,32 @@
+# 浏览器内核、模型与包缓存（体积大，无需 AI 读取或索引）
+browsers/
+.local/
+
+# 敏感配置与账号登录态（遵循 AGENTS.md 红线，禁止 AI 读取或打印）
+creatorhub/data/
+creatorhub/config.yaml
+
+# 虚拟环境、嵌套依赖与无关子目录（文件极多，避免拖慢检索）
+**/.venv/
+**/__pycache__/
+creatorhub/node_modules/
+creatorhub/desktop/
+creatorhub/frontend/
+creatorhub/preview/
+creatorhub/assets/
+node_modules/*
+!node_modules/openfilm/
+node_modules/openfilm/library/
+node_modules/openfilm/models/
+
+# 大体积音视频与压缩包（由 ffprobe / openfilm / curl 处理，无需文本读取）
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.onnx
+*.dmg
+*.zip

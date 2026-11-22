@@ -43,13 +43,14 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 CreatorHub 仓库里没有给 agent 的 skill，它的接口整理在 `references/creatorhub-api.md`。
 
-## 三种入口
+## 四种入口
 
 | 用户说 | 入口 | 走哪些步骤 |
 |---|---|---|
-| 「跑一条」「按热点做一条」 | A 热点原创 | 1 → 3 → 4 → 5 → 6 → 7 |
-| 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 3 → 4 → 5 → 6 → 7 |
-| 「复刻这条」「二创」「做同款」，或给了参考视频 | C 复刻 | 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
+| 「跑一条」「按热点做一条」 | A 热点原创 | 0 → 1 → 3 → 4 → 5 → 6 → 7 |
+| 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 0 → 3 → 4 → 5 → 6 → 7 |
+| 「复刻这条」「二创」「做同款」，或给出参考视频要求照着做 | C 复刻 | 0 → 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
+| 「发这条成片」「直接发 xxx.mp4」「帮我分发这个视频」（给出待发成片而非参考视频） | D 已有成片直发 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若用户未给文案，按文件名/轻量抽帧或向用户确认主题拟定各平台文案，不必跑全量拆片，直接按步骤 6 分发） |
 
 指令里的附加词：
 
@@ -103,7 +104,7 @@ runs/
 
 - `id`：目录名
 - `topic`：完整的话题
-- `entry`：`A`、`B` 或 `C`
+- `entry`：`A`、`B`、`C` 或 `D`（兼容旧记录 `publish-existing`）
 - `started_at`、`finished_at`：带时区的时间
 - `status`：`running`（进行中）、`made`（成片已出、未发布）、`published`（要发的平台都发成功）、`partial`（部分平台成功）、`failed`（失败）、`stopped`（按用户要求或因问题停下）
 - `step`：做到第几步
@@ -116,7 +117,7 @@ runs/
 ## 步骤 0：开始前检查
 
 1. 环境：执行 `. .agents/skills/short-video-pipeline/scripts/env.sh`。
-2. 配套仓库：`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`、`creatorhub/creatorhub.py` 三者都在。缺任何一个，先按 [references/setup.md](references/setup.md) 装好再继续。
+2. 配套仓库：`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`、`creatorhub/creatorhub.py` 三者都在。缺任何一个，先按 [references/setup.md](references/setup.md) 装好再继续。（入口 D 已有成片直发仅需 `creatorhub/creatorhub.py` 和 `ffprobe`，不阻塞于另外两个仓库。）
 3. CreatorHub：`curl -fsS http://127.0.0.1:8000/health`。不通就在执行过环境脚本的 shell 里，进 `creatorhub/` 后台执行 `python3 creatorhub.py start --no-open`，等到通。
 4. 账号：按 `references/creatorhub-api.md` 的「查账号」取每个平台可发布的账号。账号 id 每次现查。某平台不可发布时这次跳过它，并在最后告诉用户原因。一个可用账号都没有时（新环境还没登录），请用户打开 `http://127.0.0.1:8000` 登录后再继续。
 5. 建运行目录，写 `run.json`，见「归档规范」。
@@ -244,13 +245,15 @@ runs/
 
 带「先给我看」「只做不发」时跳过。
 
-**按 [references/creatorhub-api.md](references/creatorhub-api.md) 的「标准发布顺序」做**，那里有接口、参数、状态和各种失败的处理办法。要点：
+**按 [references/creatorhub-api.md](references/creatorhub-api.md) 的「Agent 调用方式」和「标准发布顺序」做**，那里有接口、参数、状态和各种失败的处理办法。要点：
 
 - 先按它开头写的办法，核对接口文档和当前 CreatorHub 版本是否一致。
+- **优先走本机 REST API**（`http://127.0.0.1:8000/api/...`）：抖音、小红书、视频号都统一通过本机 API 触发，由 CreatorHub 内部自动拉起隔离浏览器完成上传提交（工作台矩阵里的「API 不可用 / 浏览器可用」是指 CreatorHub 内部对平台的通道，不影响调本机 API）。需要查询文档未列出的接口时，直接查实时 `http://127.0.0.1:8000/openapi.json`。
+- **API 异常或不全时用 8000 网页端排查**：当本机 API 不可用、报错不明确或缺少某项状态/诊断能力时，允许并建议 agent 打开 `http://127.0.0.1:8000` 前端工作台页面查看和点击定位原因（仍须遵守不删账号、不改代理/指纹/浏览器内核、不强行解除写暂停、不重试 `uncertain`、不外泄敏感信息的红线；需要扫码或人机验证时停下通知用户）。
 - 每个平台各写一份标题、正文、话题，写进 `publish/publish.json`。任务 id、状态、作品链接拿到后也写回这个文件。
-- 建立任务就等于提交发布，建之前确认自检已通过。
-- 一个账号发完再发下一个。
-- 状态是「结果待确认」时不重试、不删除，交给用户去平台核对。
+- 建立任务就等于提交发布，建之前确认自检已通过（入口 D 确认已有成片 `ffprobe` 规格正常）。
+- **逐平台串行（IDE 终端优先非阻塞轮询）**：成片上传一次后，对每个平台依次「建任务 → 执行并等待终态」，一个平台结束后再建下一个平台，避免与后台引擎并发抢跑；在 Cursor 等易触发终端超时的环境里，建完任务后不要死卡 `run-now`，改用间隔轮询 `GET /api/publish` 的 `status` 与 `live_stage` 等待结束。
+- 状态是「结果待确认（`uncertain`）」时不重试、不删除、不修改，交给用户去平台核对。
 
 ## 步骤 7：记录和汇报
 

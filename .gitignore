@@ -3,6 +3,13 @@
 # package-lock.json 不跟踪：配套仓库一律用最新版，不锁版本。
 /*
 !/.gitignore
+!/.ignore
+!/.geminiignore
+!/.cursorignore
+!/.cursorindexingignore
+!/.claude/
+/.claude/*
+!/.claude/settings.json
 !/AGENTS.md
 !/CLAUDE.md
 !/.agents/

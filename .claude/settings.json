@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./browsers/**)",
+      "Read(./.local/**)",
+      "Read(./creatorhub/data/**)",
+      "Read(./creatorhub/config.yaml)",
+      "Read(./creatorhub/.venv/**)",
+      "Read(./creatorhub/node_modules/**)",
+      "Read(./rea-video/.venv/**)",
+      "Read(./node_modules/openfilm/library/**)",
+      "Read(./node_modules/openfilm/models/**)",
+      "Edit(./creatorhub/data/**)",
+      "Edit(./creatorhub/config.yaml)",
+      "Edit(./.local/**)",
+      "Write(./creatorhub/data/**)",
+      "Write(./creatorhub/config.yaml)",
+      "Write(./.local/**)"
+    ]
+  }
+}

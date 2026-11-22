@@ -6,7 +6,7 @@
 
 ## 必须先读
 
-用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」，或给出参考视频时：
+用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「直接发 xxx.mp4」，或给出参考视频/待发成片时：
 
 **先读 `.agents/skills/short-video-pipeline/SKILL.md`，严格按它执行。** 不要让用户重复说明流程，也不要自己另起一套做法。
 
@@ -38,6 +38,7 @@
 | 位置 | 是否在本仓库里 | 内容 |
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
+| `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
 | `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
@@ -53,6 +54,14 @@
 - `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/creatorhub-api.md`：分发用到的接口
+
+## 检索范围与提速约定（面向所有 Agent）
+
+本工作区包含大量本地依赖、浏览器内核、模型缓存与视频文件（约 4 GB+）。无论使用 **Antigravity、Codex、Claude Code 还是 Cursor**：
+
+- 不要对整个工作区或 `browsers/`、`.local/`、`**/.venv/`、`creatorhub/data/`、`creatorhub/node_modules/`、`creatorhub/desktop/`、`creatorhub/frontend/`、`node_modules/openfilm/library/` 做全量递归扫描。
+- 核对或查询 CreatorHub 接口时，优先读 `.agents/skills/short-video-pipeline/references/creatorhub-api.md` 或查询运行中的 `http://127.0.0.1:8000/openapi.json`，必要时只读 `creatorhub/app/api/` 下对应的单个文件。
+- 仅按明确路径访问所需文件：`runs/<目录>/`、`rea-video/skills/`、`node_modules/openfilm/`（`SYSTEM_PROMPT.md`、`SPEC.md`、`manual/`）。
 
 ## 不要做的事
 

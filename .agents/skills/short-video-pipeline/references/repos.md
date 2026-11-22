@@ -16,7 +16,7 @@
 
 - 仓库：https://github.com/openfilm/openfilm
 - 版本：npm 包 `openfilm` 的最新版（根目录 `package.json` 里写的是 `latest`）
-- 上次核对：0.4.1，2026-11-20
+- 上次核对：0.4.1，2026-11-22
 - 安装位置：`node_modules/openfilm/`
 - 命令：`node_modules/.bin/openfilm`（source `env.sh` 后当前 shell 内直接敲 `openfilm` 也优先指向它）
 - 给 agent 的 skill（必须读）：
@@ -34,7 +34,7 @@
 
 - 仓库：https://github.com/JuneYaooo/rea-video
 - 版本：默认分支的最新提交
-- 上次核对：提交 `82d5463`，2026-11-20
+- 上次核对：提交 `90eae96`，2026-11-22
 - 安装位置：`rea-video/`，虚拟环境 `rea-video/.venv`
 - 命令：`rea-video/.venv/bin/rea-video`（不在 PATH 里）
 - 给 agent 的 skill（必须读）：
@@ -50,11 +50,11 @@
 
 - 仓库：https://github.com/3441293738/creatorhub
 - 版本：默认分支的最新提交
-- 上次核对：v0.2.9+1，提交 `27b9b8e`，2026-11-20
+- 上次核对：v0.3.2+1，提交 `4f0ec85`，2026-11-22
 - 安装位置：`creatorhub/`
-- 命令：在 `creatorhub/` 里 `python3 creatorhub.py install`、`start --no-open`、`check`
+- 命令：在 `creatorhub/` 里 `python3 creatorhub.py install`、`start --no-open`（v0.3.2 起已移除 `check` 子命令）
 - 本机接口：`http://127.0.0.1:8000`
-- 给 agent 的 skill：仓库里没有。接口整理在 [creatorhub-api.md](creatorhub-api.md)，依据是 `creatorhub/app/main.py`。
+- 给 agent 的 skill：仓库里没有。接口整理在 [creatorhub-api.md](creatorhub-api.md)，依据是 `creatorhub/app/api/` 与 `creatorhub/app/services/`。
 - 其他文档：`creatorhub/README.md`、`creatorhub/guide/`（给人看的使用说明）、`creatorhub/app/agent/README.md`（它内置的 AI 助手，只读，不能发布，本流程不用）
 - 说明：
   - 账号登录态、数据库、浏览器 Profile、上传文件都在 `creatorhub/data/`，不随本仓库迁移，也不得外传。
@@ -82,5 +82,5 @@
 - 仓库：https://github.com/adryfish/fingerprint-chromium
 - 用途：给 CreatorHub 的抖音、视频号账号用，按账号的种子生成固定指纹。不装也能用，CreatorHub 自带的浏览器可以发布。
 - 版本：有对应系统安装包的最新发行版
-- 上次核对：148.0.7778.215（macOS），2026-11-18
+- 上次核对：148.0.7778.215（macOS；最新总版本 150.0.7871.186 暂无 macOS 包），2026-11-22
 - 安装位置：`browsers/`

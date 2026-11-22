@@ -1,0 +1,8 @@
+# 排除外部配套仓库与运行产物的语义索引，提升 Cursor 打开与检索速度；
+# 不阻止 Agent 按明确路径读写 runs/、rea-video/skills/、node_modules/openfilm/ 与 creatorhub/app/api/。
+runs/
+creatorhub/
+rea-video/
+node_modules/
+browsers/
+.local/

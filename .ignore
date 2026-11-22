@@ -1,0 +1,25 @@
+# 通用检索忽略（ripgrep / fd 等底层搜索工具；同时覆盖 Codex、Claude Code、Antigravity 等 Agent）
+# 仅影响默认搜索遍历，不阻止按明确路径读取 runs/、skill 文档或接口源码。
+browsers/
+.local/
+creatorhub/data/
+creatorhub/config.yaml
+**/.venv/
+**/__pycache__/
+creatorhub/node_modules/
+creatorhub/desktop/
+creatorhub/frontend/
+creatorhub/preview/
+creatorhub/assets/
+node_modules/openfilm/library/
+node_modules/openfilm/models/
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.onnx
+*.dmg
+*.zip
