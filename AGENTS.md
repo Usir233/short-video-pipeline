@@ -40,7 +40,7 @@
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
 | `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
-| `assets/brand/` | 是 | 品牌静态素材（如透明底品牌 Logo `logo.png`），随本仓库进入 git；制作视频时按需复制进 `runs/<目录>/film/assets/` |
+| `assets/brand/` | 是 | 品牌静态素材（如透明底品牌 Logo `logo.png`、按系列分类的视觉参考样图 `samples/` 与系列固定标题图，非全站所有视频共用），随本仓库进入 git；制作视频或对应系列封面时按需引用 |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
@@ -54,8 +54,10 @@
 - `references/repos.md`：配套仓库及其自带文档/Skill 的相对路径索引（不再手抄上游用法与版本号）
 - `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
-- `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定与安全红线（具体接口与平台能力直接查 `creatorhub/` 文档及实时 `/openapi.json`）
-- `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/合规校验、分平台表单硬规则与自动修正/阻断机制）
+- `references/copywriting.md`：视频号、小红书、抖音发布文案写法（四项文案、三层标签法、辰奕品牌主张融入与字段映射）
+- `references/cover-design.md`：「意图电商」三平台口播视频封面设计规范、品牌固定图路径、出图检查与手动发布协同（支持多账号组扩展独立模板文档）
+- `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.4.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线
+- `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/文案/封面/合规校验、分平台表单硬规则与自动修正/阻断机制）
 
 ## 检索范围与提速约定（面向所有 Agent）
 
