@@ -50,13 +50,9 @@
   - 调用顺序、异常排障与安全红线见 [creatorhub-api.md](creatorhub-api.md)。
   - 账号登录态、数据库、浏览器 Profile 在 `creatorhub/data/`，配置在 `creatorhub/config.yaml`，严禁外传、读取或打印；小红书固定依赖本机 Google Chrome。
 
-## 本工作区自带脚本（零外部重型依赖）
+## 公开热榜与素材寻源脚本（本工作区自带）
 
-不额外安装第三方仓库，统一封装在 `.agents/skills/short-video-pipeline/scripts/`：
-- `env.sh`：将配套仓库的设置、缓存、模型、浏览器内核重定向到本工作区内；
-- `fetch_trends.py`、`fetch_asset.py`：公开热榜拉取与素材搜抓/入库（含 `--normalize-broll` 动态视频转码），用法见 [sourcing.md](sourcing.md)；
-- `format_captions.py`：从原始 SRT / `transcript.json` 一键生成透明描边、6–12 字单行、`<c.hi>` 高亮 OpenFilm WebVTT 字幕，用法见 [video-craft.md](video-craft.md)；
-- `check_craft.py`：渲染前导演级视听反违和自动质检器（校验全屏人像占比、去小窗/网页卡片墙、静态图时长、字幕规范、SFX 上限与 BGM 静音呼吸），用法见 [video-craft.md](video-craft.md)。
+不额外安装第三方仓库，统一封装在 `.agents/skills/short-video-pipeline/scripts/`（`fetch_trends.py`、`fetch_asset.py`），源矩阵、降级链路与用法见 [sourcing.md](sourcing.md)。
 
 ## 可选：指纹浏览器内核
 

@@ -45,7 +45,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
 | 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md`、`rea-video/skills/rea-video/references/`、`rea-video/docs/` |
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
-| 剪辑、渲染与视听美学 | openfilm/openfilm + 本工作区规范 | `node_modules/openfilm/`、`.agents/.../references/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/video-craft.md](references/video-craft.md)（画面结构、去网页感、字幕融合、动效与声音导演规范） |
+| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（四项文案、三层标签、辰奕品牌主张与字段映射） |
 | 三平台定制封面（按需，多号组可扩展） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（「意图电商」口播系列规范；其他号组按需新增独立模板规范） |
 | 母素材与 1 母片 + 3 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、1 母片 + 3 延伸子片、防传混命名与 `delivery/` 交付包） |
@@ -210,30 +210,27 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ## 步骤 3：脚本和分镜
 
-**先读 [references/video-craft.md](references/video-craft.md)**，从分镜源头杜绝「网课小窗 + 网页后台卡片墙 + 机械特效堆砌」的流水线违和感。
-
 1. 查事实与定主旨：视频里出现的数字、时间、说法都要有出处，查不到的不写，出处记进 `topic/topic.json`；同时先用一句话写清全片要回答的核心问题与主要支撑观点，提前对齐后续三平台封面承诺（确保封面答应给观众的东西能在成片里找到）。
-2. 写 `script/storyboard.json`：每镜包含起止秒（口播片严格卡语流重音/气口，不机械取整数秒）、镜头型（`A 全屏多景别口播` / `B 全屏口播+局部轻量浮层` / `C 全屏动态 B-roll` / `D 极简概念动画`）、屏幕文字（每屏除字幕外 ≤1 组焦点、辅助字 ≤20–25 字）、画面描述、画面做法（`aroll` / `code` / `video` / `image` / `library`），并规划全片 **BGM 静音呼吸点**与 **SFX 预算上限**（30s ≤4、60s ≤7、140s ≤12）。
-   - 口播出镜类视频：全屏真人出镜占比默认 **≥55%–75%**，并保留 **≥25% 纯人像干净呼吸段**（零贴纸、零顶栏、零卡片）；严禁把「顶部横屏小窗 + 下半多格卡片」作为默认模具。
-   - 入口 A、B（无出镜纯资讯片）：总长 15–30 秒，5–8 镜；第一镜 3 秒内说出看点，最后一镜给一句总结，同样严守一屏单焦点与少字大字留白。
-   - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案；若用户认可某条对标视频的剪辑语言，可按 `references/video-craft.md` 第八节沉淀风格卡。
+2. 写 `script/storyboard.json`：每镜包含起止秒、屏幕文字（每屏不超过两行）、画面描述、画面做法（`code` / `image` / `video` / `library`）。
+   - 入口 A、B：总长 15–30 秒，5–8 镜；第一镜 3 秒内说出看点，最后一镜给一句总结。
+   - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案。
 3. 默认不配音，字幕加音乐。参考视频有人声而本机没有可用的配音服务时，仍按无配音做，并在最后告诉用户。
 
 ## 步骤 4：素材
 
-**先整篇读 `openfilm skill media`**（先 source `env.sh`，再在目标 `film/` 目录里执行 `openfilm skill media`）、[references/sourcing.md](references/sourcing.md) 与 [references/video-craft.md](references/video-craft.md)。
+**先整篇读 `openfilm skill media`**（先 source `env.sh`，再在目标 `film/` 目录里执行 `openfilm skill media`）及 [references/sourcing.md](references/sourcing.md)。
 
 > **前置动作**：OpenFilm 执行 `openfilm get --take` 前若要求目录已是项目（否则报 `is not in a project`），先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。具体命令写法以 `node_modules/openfilm/manual/` 为准。
 
 按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
-- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。音效优先选**温润低频、轻柔空气、自然材质（纸张/笔触/木质轻点）**，避开刺耳电子故障音、夸张卡通音与高音量铃铛。
-- **B. 极简概念隐喻、对比与白板手绘动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）；**严守极简大字留白（一屏只演 1 个视觉动作、≤20 字、核心字 ≥56px、次级字 ≥32px），严禁画成多格细框 SaaS 网页后台或密密麻麻 PPT 表格**。
+- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
+- **B. 数据对比、参数表、清单、金句标题、流程动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）。
 - **C. 科技巨头发布新闻 / 产品报道 / 真实事件画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再由当前 agent 调用 `scripts/fetch_asset.py` 主动抓取并落盘到 OpenFilm 素材区：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、按需截 1080px 干净官网首屏；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
-- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **动态竖屏视频（MP4）绝对优先于静态照片**（已配免费 Key 时优先 `openfilm get video-search --orientation portrait`；无 Key 时可查 Wikimedia/Archive 公开视频或官方 Demo 切片）→ 仅在无匹配动态视频时用静态高清图兜底（且单张静态图停留 **≤3.5 秒**，绝不用一张死图硬撑 10 秒以上）。
-- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类极简代码画面。
+- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → 已配免费 Key 时用 OpenFilm 内置 **Pexels / Pixabay**（用 2–4 个英文视觉关键词，视频加 `--orientation portrait`）→ 未配 Key 或缺图时用 `fetch_asset.py stock` 查免 Key 公开免版权库（Wikimedia Commons、NASA、Internet Archive、Openverse）。
+- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类代码画面。
 
 素材放哪里：
 
@@ -252,31 +249,28 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ## 步骤 5：剪辑和渲染
 
-**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`）、整篇读 `openfilm skill film`（兼容 `edit`），并严格执行 [references/video-craft.md](references/video-craft.md)**，按它的导演级视听规范建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
+**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`），再整篇读 `openfilm skill film`（兼容 `edit`）**，按它的做法建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
 
-本工作区的约定（技术底线 + 视听导演铁律）：
+本工作区的约定：
 
 - 每条命令都在目标 `film/` 里执行（单片为 `runs/<目录>/film/`，入口 E 为 `master/film/` 或 `variants/vN-<风格>/film/`），先在根目录或按对应层级 source `env.sh`，直接调用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`，避免硬写 `../../../` 在入口 E 深层目录失效）。
 - 项目就建在运行目录的 `film/`（入口 E 建在各自 `master/film/` 或 `variants/vN-<风格>/film/`），不用 OpenFilm 默认的项目位置。
-- **构图与安全区**：画面 1080×1920；顶部留 ≥160px、底部留 ≥360px 避开平台 UI；口播片以**全屏 4K 三景别跳切（1.00 ↔ 1.12 ↔ 1.20）**为主舞台（≥55%），保留 ≥25% 纯人像干净留白段，**默认不加常驻顶部导航栏/进度条**；切 B-roll 时干脆全屏切走（2–4.5s）**不贴右上角监控小窗**；开场/高光金句可按需采用 OpenFilm 原生 `--of-cutout: 1` 人前字后景深层次（须 `openfilm look` 核验边缘洁净）。
-- **字幕融画与短句**：彻底淘汰厚重纯黑方块底，**先运行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/format_captions.py"`** 从原始 SRT / `transcript.json` 自动切分为**透明底粗体柔影描边、单行 6–12 字、带 `<c.hi>` 单词主题色高亮**的 WebVTT（支持 4 槽位定版主题 `--theme master|v1|v2|v3` 或 `dark|punch|light|cinema` 及 `--mute-ranges` 在中央大字金句时段自动让位），基线锁定在 `y ≈ 1340–1450px`。
-- **动效与调色**：UI/文字入场统一使用快进慢出物理阻尼缓动（`0.22–0.38s`，位移 `16–28px`，禁用机械 `linear` 弹入），85%+ 切镜采用干净硬切并卡在语流重音；全片色板锁定 ≤2 主色 + 1 点缀色，原片偏灰时用统一轻度 `filter` 或 `--of-lut` 融合人像与图形层。
-- **声音呼吸与音效克制**：BGM 说话期间压在人声下 **-22~-26 dB**（`volume` 约 `0.07–0.13`），且必设 **1–3 次金句前静音真空呼吸**（绝不一根死直线到底）；SFX 严守总数上限（30s ≤4、60s ≤7、140s ≤12）与 **-18~-26 dB** 轻托音量，**禁止每切必“咻”、禁止刺耳电子/高音铃盖人声**；短音效不手写 `#t=0,x` 截尾，不同音效分轨防重叠。
-- 横屏官图或带文字的演示图放进竖屏时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
+- 画面 1080×1920；**竖屏平台安全区**：顶部留 ≥160px（避开状态栏/搜索栏），底部留 ≥360px（避开抖音/小红书/视频号底栏文案），主视觉和标题控制在 2 行以内，不遮挡、不折出第 3 行。
+- 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
 - 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
+- 短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾（MP3 编码填充易导致 WebAudio 解码时长略短于 `ffprobe` 而报错），转场音效与点缀音效分放不同 `<section>` 防重叠；按 `openfilm look` 的响度提示清理过轻或未使用的音频。
 - 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
-- **渲染前强制反违和自动质检**：正式渲染前先执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/check_craft.py" --film . --mode talking_head --json-out ../output/check/craft-lint.json`（无出镜纯资讯片改 `--mode faceless`），确认硬性报错归零后再渲染；
 - 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`）。每次都带 `--out`，不用默认的导出位置。
 
-出片前自检，**技术项 + 审美反违和项全部通过**才能进入发布：
+出片前自检，全部通过才能进入发布：
 
-- **技术与画面核验**：每镜至少用 `openfilm look` 看一帧（文字不出框、不遮脸、无错字、无媒体水印、无音频告警）；渲染完成后执行 `openfilm look --full` & `ffprobe`（1080×1920、时长一致、有音轨、`-14 LUFS` 且真峰值 `< -1.0 dBTP`、无黑帧/闪屏/跳帧）。
-- **10 项导演级审美反违和门禁（强制）**：确认 `scripts/check_craft.py` 输出 `passed: true`（落盘 `output/check/craft-lint.json`），并结合目检逐项核对 [references/video-craft.md](references/video-craft.md) 第七节全部 10 项（全屏人像占比、去网页后台/顶栏/英文眉标、单帧单焦点与字号、纯人像留白、B-roll 动态生命力、去黑膏药短句高亮字幕、文字零重复打架、缓动卡点、SFX 频次与低音量克制、BGM 静音呼吸与整体不违和体感），结果写入 `check.json` 的 `aesthetic_checks`。
-- **入口 C 额外核验**：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
+- 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
+- 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
+- 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
-自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，技术与 10 项审美结论写进 `check.json`。
+自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，每项检查的结论写进 `check.json`。
 
-不合格（无论技术瑕疵还是“像网页/PPT 模板、特效字幕音效堆砌违和”）就重构修到合格。修不好就停下报告，不发布。
+不合格就修到合格。修不好就停下报告，不发布。
 
 ## 步骤 6：文案、封面与分发
 

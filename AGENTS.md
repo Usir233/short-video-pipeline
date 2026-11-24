@@ -39,7 +39,7 @@
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
-| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与工具脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`、`format_captions.py`、`check_craft.py`） |
+| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
 | `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png` 与按系列分类的视觉参考样图 `samples/`；单期/专题标题图属非通用资产，放各自运行目录不入 git） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
@@ -53,7 +53,6 @@
 
 - `references/repos.md`：配套仓库及其自带文档/Skill 的相对路径索引（不再手抄上游用法与版本号）
 - `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
-- `references/video-craft.md`：短视频视听导演与反违和规范（已定版的 4 槽位固定视觉风格与配色色板、全屏人像主舞台与多景别跳切、去网页 Dashboard/小窗模板、透明短句高亮字幕、物理缓动与卡点、BGM 静音呼吸与克制 SFX、10 项审美门禁与 OpenFilm 配方）
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/copywriting.md`：视频号、小红书、抖音发布文案写法（四项文案、三层标签法、辰奕品牌主张融入、字段映射与多片防雷同）
 - `references/cover-design.md`：「意图电商」三平台口播视频封面设计规范、品牌固定图路径、出图检查与手动发布协同（支持多账号组扩展独立模板文档）
