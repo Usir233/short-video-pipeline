@@ -6,7 +6,7 @@
 
 ## 必须先读
 
-用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「直接发 xxx.mp4」，或给出参考视频/待发成片时：
+用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「直接发 xxx.mp4」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时：
 
 **先读 `.agents/skills/short-video-pipeline/SKILL.md`，严格按它执行。** 不要让用户重复说明流程，也不要自己另起一套做法。
 
@@ -39,8 +39,8 @@
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
-| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
-| `assets/brand/` | 是 | 品牌静态素材（如透明底品牌 Logo `logo.png`、按系列分类的视觉参考样图 `samples/` 与系列固定标题图，非全站所有视频共用），随本仓库进入 git；制作视频或对应系列封面时按需引用 |
+| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与工具脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`、`format_captions.py`、`check_craft.py`） |
+| `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png` 与按系列分类的视觉参考样图 `samples/`；单期/专题标题图属非通用资产，放各自运行目录不入 git） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
@@ -53,11 +53,13 @@
 
 - `references/repos.md`：配套仓库及其自带文档/Skill 的相对路径索引（不再手抄上游用法与版本号）
 - `references/sourcing.md`：国内外热点矩阵与 5 类镜头素材寻源方案
+- `references/video-craft.md`：短视频视听导演与反违和规范（已定版的 4 槽位固定视觉风格与配色色板、全屏人像主舞台与多景别跳切、去网页 Dashboard/小窗模板、透明短句高亮字幕、物理缓动与卡点、BGM 静音呼吸与克制 SFX、10 项审美门禁与 OpenFilm 配方）
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
-- `references/copywriting.md`：视频号、小红书、抖音发布文案写法（四项文案、三层标签法、辰奕品牌主张融入与字段映射）
+- `references/copywriting.md`：视频号、小红书、抖音发布文案写法（四项文案、三层标签法、辰奕品牌主张融入、字段映射与多片防雷同）
 - `references/cover-design.md`：「意图电商」三平台口播视频封面设计规范、品牌固定图路径、出图检查与手动发布协同（支持多账号组扩展独立模板文档）
+- `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、粗剪与打马赛克等人工确认闸门、母素材确立、1 完整特效母片 + 3 延伸风格子片、防传混路径命名与 `delivery/` 统一交付包）
 - `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.4.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线
-- `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/文案/封面/合规校验、分平台表单硬规则与自动修正/阻断机制）
+- `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/文案/封面/合规校验、分平台表单硬规则、入口 E 跨 4 片与路径收口门禁、自动修正/阻断机制）
 
 ## 检索范围与提速约定（面向所有 Agent）
 

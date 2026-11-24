@@ -124,16 +124,42 @@ def append_credit(assets_dir: Path, entry: dict[str, Any]) -> Path:
     return credits_path
 
 
+def normalize_broll_video(src_file: Path, dst_mp4: Path) -> Path:
+    """将公开库下载的 webm/ogv/带杂音视频无损转码为 OpenFilm 友好的 30fps 静音 H.264 MP4（不动原件）。"""
+    dst_mp4.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y", "-i", str(src_file),
+        "-vf", "scale='min(1920,iw)':-2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-r", "30", "-an",
+        "-movflags", "+faststart",
+        str(dst_mp4),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0 or not dst_mp4.is_file():
+        raise RuntimeError(f"B-roll 转码失败：{proc.stderr.strip()[:240]}")
+    return dst_mp4
+
+
 def copy_to_openfilm_areas(
     src_file: Path,
     assets_dir: Path | None,
     target_name: str | None,
     save_reusable: bool,
     credit_meta: dict[str, Any],
+    normalize_broll: bool = False,
 ) -> dict[str, str | None]:
     result: dict[str, str | None] = {"asset_path": None, "saved_path": None}
     fname = target_name or src_file.name
-    if assets_dir:
+    actual_src = src_file
+    if normalize_broll and src_file.suffix.lower() in (".webm", ".ogv", ".ogg", ".mov", ".mkv", ".mp4"):
+        fname = str(Path(fname).with_suffix(".mp4"))
+        if assets_dir:
+            assets_dir.mkdir(parents=True, exist_ok=True)
+            dst = assets_dir / fname
+            actual_src = normalize_broll_video(src_file, dst)
+            result["asset_path"] = str(dst)
+    elif assets_dir:
         assets_dir.mkdir(parents=True, exist_ok=True)
         dst = assets_dir / fname
         if src_file.resolve() != dst.resolve():
@@ -144,8 +170,10 @@ def copy_to_openfilm_areas(
         saved_root = Path(os.environ.get("OPENFILM_SAVED") or (svp_root() / ".local" / "openfilm-user" / "saved"))
         saved_root.mkdir(parents=True, exist_ok=True)
         sdst = saved_root / fname
-        if src_file.resolve() != sdst.resolve():
-            shutil.copy2(src_file, sdst)
+        if normalize_broll and actual_src == src_file:
+            normalize_broll_video(src_file, sdst)
+        elif actual_src.resolve() != sdst.resolve():
+            shutil.copy2(actual_src, sdst)
         result["saved_path"] = str(sdst)
 
     if assets_dir:
@@ -514,6 +542,7 @@ def cmd_stock(args: argparse.Namespace) -> int:
                         "page_url": h["page_url"],
                         "query": args.query,
                     },
+                    normalize_broll=(args.kind == "video"),
                 )
                 downloaded.append({"file": str(saved), **copied, "meta": h})
             except Exception as exc:
@@ -631,6 +660,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             "license": args.license,
             "prompt": args.prompt,
         },
+        normalize_broll=args.normalize_broll,
     )
     print(json.dumps(copied, ensure_ascii=False, indent=2))
     return 0
@@ -686,6 +716,7 @@ def main() -> int:
     p_reg.add_argument("--url", default="")
     p_reg.add_argument("--license", default="")
     p_reg.add_argument("--prompt", default="")
+    p_reg.add_argument("--normalize-broll", action="store_true", help="将 B-roll 视频自动转码为 30fps 静音 H.264 MP4")
     p_reg.set_defaults(func=cmd_register)
 
     args = p.parse_args()

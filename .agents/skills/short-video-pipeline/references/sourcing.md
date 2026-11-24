@@ -72,10 +72,10 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode searc
 
 | 镜头类型 | 最优通道（按顺序） | 执行命令 / 工具 |
 |---|---|---|
-| **A. 音乐、音效、贴纸、已有自存** | 1. OpenFilm 本地复用库 `my-media`<br>2. OpenFilm 自带 CC0 免费库<br>3. Openverse Audio（免 Key 备用） | `openfilm get my-media --prompt "..."`<br>`openfilm get music-search` / `sfx-search` / `sticker`<br>备用：`fetch_asset.py stock --kind audio --source openverse ...` |
-| **B. 数据对比、参数表、清单、金句标题、流程动效** | 直接写 **OpenFilm 代码画面**（HTML/CSS/SVG/Canvas） | 在 `film/` 下写 1080×1920 页面（清晰度最高、零版权风险、最快） |
+| **A. 音乐、音效、贴纸、已有自存** | 1. OpenFilm 本地复用库 `my-media`<br>2. OpenFilm 自带 CC0 免费库<br>3. Openverse Audio（免 Key 备用）<br>（音效优先选**温润低频、轻柔空气、自然材质**，避开刺耳电子音/夸张卡通音/高音玻璃铃；严守 [video-craft.md](video-craft.md) SFX 数量上限） | `openfilm get my-media --prompt "..."`<br>`openfilm get music-search` / `sfx-search` / `sticker`<br>备用：`fetch_asset.py stock --kind audio --source openverse ...` |
+| **B. 极简概念隐喻、对比与白板手绘动效** | 直接写 **OpenFilm 代码画面**（HTML/CSS/SVG/Canvas）<br>（对标 Keynote / Dan Koe 极简留白：**一屏 1 动作、≤20 字、核心字 ≥56px**，严禁画多格细框 SaaS 网页后台卡片墙） | 在 `film/` 下写 1080×1920 极简页面（清晰度最高、零版权风险、最快） |
 | **C. 科技巨头发布新闻 / 产品报道 / 真实事件** | 1. 找一手官方新闻稿/博客链接（`fetch_trends.py --mode search` 或 RSS 原文链接）<br>2. **抽官方高清配图 + 截取干净官网首屏**<br>3. **搜并截取官方发布会/Demo 3–6 秒短片段** | 抽图与截图：`fetch_asset.py news-page --url "<官方URL>" --out materials --screenshot`<br>搜官方视频：`fetch_asset.py video-search --query "Apple keynote official"`<br>精准切片：`fetch_asset.py video-clip --url "<URL>" --start 00:10 --end 00:16 --mute --out materials/demo.mp4` |
-| **D. 通用实拍 B-roll / 氛围空镜 / 科普插图** | 1. 查 `openfilm get my-media`（`.local/openfilm-user/saved/`）<br>2. **OpenFilm 内置 Pexels / Pixabay**（免费 API Key，**务必用 2–4 个英文视觉关键词**，视频加 `--orientation portrait`）<br>3. **零 Key 公开免版权库**：Wikimedia Commons（图/视频）、NASA（航天科技）、Internet Archive（历史影像）、Openverse（图/音） | 配了免费 Key：`openfilm get video-search --prompt "server room neon" --orientation portrait`<br>免 Key 兜底：`fetch_asset.py stock --query "microchip silicon wafer" --kind image --download 2 --out materials --assets film/assets --save-reusable` |
+| **D. 通用实拍 B-roll / 氛围空镜 / 科普插图** | **动态竖屏视频优先于静态照片！**<br>1. 查 `openfilm get my-media`（`.local/openfilm-user/saved/`）<br>2. **OpenFilm 内置 Pexels / Pixabay 动态视频**（免费 API Key，**务必用 2–4 个英文视觉关键词**，视频加 `--orientation portrait`）<br>3. **零 Key 公开免版权库**：Wikimedia Commons（优先视频，图作兜底）、NASA、Internet Archive、Openverse（`stock --kind video --assets ...` 会自动将 `.webm`/`.ogv` 转码为 OpenFilm 友好的 30fps 静音 H.264 MP4；**静态图兜底单张停留 ≤3.5s**，全屏切走不贴监控小窗、不糊厚黑遮罩叠网页框） | 配了免费 Key：`openfilm get video-search --prompt "server room neon" --orientation portrait`<br>免 Key 兜底：`fetch_asset.py stock --query "microchip silicon wafer" --kind video --download 2 --out materials --assets film/assets --save-reusable`（无视频再换 `--kind image`；手动入库 B-roll 视频加 `--normalize-broll`） |
 | **E. 抽象概念 / 搜不到的专属场景** | 1. Agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生图服务<br>2. 生成视频（全片 ≤2 镜、每镜 ≤6 秒；付费须先告知用户费用并获同意）<br>3. 失败或不可用则退回 **B 类代码画面** | Agent 生图 / `openfilm get image` / `openfilm get video` |
 
 ### 素材入库与复用命令
@@ -91,6 +91,8 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_asset.py register \
   --url "https://www.apple.com/newsroom/..." \
   --license "新闻报道合理引用（画面标注来源）"
 ```
+
+> **入口 E（[multi-variant.md](multi-variant.md)）多项目路径提醒**：在入口 E 中，母片与 3 条延伸子片各自拥有独立目录，调用 `fetch_asset.py` 时务必将 `--out` 与 `--assets` 分别指向对应片目录（如 `runs/<目录>/master/materials` 与 `runs/<目录>/master/film/assets`，或 `runs/<目录>/variants/v1-<风格>/materials` 与 `.../film/assets`），严禁 4 片混写进同一目录。若在深层子目录执行脚本，先 source `env.sh` 后直接使用 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`。
 
 ---
 

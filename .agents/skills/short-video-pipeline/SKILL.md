@@ -1,6 +1,6 @@
 ---
 name: short-video-pipeline
-description: 在本工作区按固定流程做竖屏短视频并分发：热点选题或指定主题或复刻参考视频 → 脚本分镜 → 寻找或生成素材 → OpenFilm 剪辑渲染 → 三平台文案与按需定制封面 → 审核门禁后交付手动发布或 CreatorHub 发布到抖音、小红书、视频号。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」，或给出参考视频/待发成片的链接、分享文案、文件时使用。
+description: 在本工作区按固定流程做竖屏短视频并分发：支持单条视频（热点/指定主题/复刻/已有成片直发）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 1 完整特效母片 + 3 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布或 CreatorHub 自动发布）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
 ---
 
 # 短视频流水线
@@ -9,7 +9,9 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 本文件面向任何 agent，不依赖某一家的专有工具。只假设你能执行命令、读写文件。其他能力有就用，没有就按「能力不足时的退路」处理。
 
-用户已定：这条流程由 agent 从头跑到完，中途不逐步请示；素材由 agent 自行寻找或生成。**分流例外**：凡本次任务按规范制作了三平台定制封面，因 CreatorHub 暂不支持上传自定义封面，做到「成片 + 三张封面 + 三套过审文案」即停下交付用户手动连同封面发布（不做定制封面时仍自动发布）。
+用户已定：单条流程默认由 agent 从头跑到完，中途不逐步请示；素材由 agent 自行寻找或生成。**两类强制分流/暂停例外**：
+1. **入口 E（母素材 + 1 母片 + 3 子片）的人工确认闸门**：未处理原片完成粗剪（话题分段切割 + 去口气词）后**必须停下向用户汇报确认或追加预处理（如打马赛克）**，确认后才确立「母素材」；母片完整成片与 3 子片规划完成后默认**再次停下确认**（指令带「一路跑完」可跳过第二次暂停）。停在确认闸门时 `run.json` 置 `status: "waiting_approval"`，用户回复后复用原运行目录续跑。
+2. **带定制封面交付手动发布**：凡本次任务制作了定制封面（含入口 E 全部 4 片 × 目标平台定制封面，默认三平台共 12 张），因 CreatorHub 暂不支持上传自定义封面，做到成片、封面与文案全部过审并完成路径规范归集后即停下交付用户手动连同封面发布（不做定制封面时单片仍自动发布；入口 E 默认仍交付 `delivery/` 手动发布，除非用户显式要求自动发布并确认账号排期）。
 
 ## 一切留在工作区内
 
@@ -17,14 +19,19 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 
 - **安装只装在工作区里**，不全局安装，不往用户主目录里放东西。细则见 [references/setup.md](references/setup.md)。
 - **处理和生成的东西只放在工作区里**，并按下面的「归档规范」归档。不往桌面、下载目录、`~/Movies`、用户主目录、系统临时目录里放任何文件。
-- 安装、更新、运行配套仓库的任何命令之前，先在同一个 shell 里执行环境脚本，它把各仓库的设置、缓存、模型、浏览器内核的位置都指到工作区里：
+- 安装、更新、运行配套仓库的任何命令之前，先在同一个 shell 里执行环境脚本，它把各仓库的设置、缓存、模型、浏览器内核的位置都指到工作区里，并在当前 shell 置顶 `$SVP_ROOT/node_modules/.bin` 到 `PATH`：
 
   ```bash
-  . .agents/skills/short-video-pipeline/scripts/env.sh        # 在根目录
-  . ../../../.agents/skills/short-video-pipeline/scripts/env.sh   # 在 runs/<目录>/film/ 里
+  # 推荐防错写法：每个新 shell 先在工作区根目录执行一次，再 cd 进任意深层目录
+  . .agents/skills/short-video-pipeline/scripts/env.sh
+
+  # 若已在深层目录直接 source，须按实际深度对应层级：
+  . ../../../.agents/skills/short-video-pipeline/scripts/env.sh        # 单片 runs/<目录>/film/（3层）
+  . ../../../../.agents/skills/short-video-pipeline/scripts/env.sh     # 入口 E runs/<目录>/master/film/（4层）
+  . ../../../../../.agents/skills/short-video-pipeline/scripts/env.sh  # 入口 E runs/<目录>/variants/vN-<风格>/film/（5层）
   ```
 
-  每个新开的 shell 都要重新执行一次。执行后 `$SVP_ROOT` 是工作区根目录的绝对路径，接口要绝对路径时用它。
+  每个新开的 shell 都要重新执行一次。执行后 `$SVP_ROOT` 是工作区根目录的绝对路径，在任意深层目录均直接用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`）、`"$SVP_ROOT/rea-video/.venv/bin/rea-video"` 与 `"$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/..."`，无需手数 `../` 层级。
 - 你自带的工具（生成图片、生成视频、下载、截图）把文件存到了工作区之外时，立刻把文件移进本次运行的目录，外面不留。
 - 你自己的草稿、脚本、中间文件放本次运行的 `tmp/`，不放系统临时目录。
 
@@ -38,21 +45,23 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 | 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md`、`rea-video/skills/rea-video/references/`、`rea-video/docs/` |
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
-| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` |
+| 剪辑、渲染与视听美学 | openfilm/openfilm + 本工作区规范 | `node_modules/openfilm/`、`.agents/.../references/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/video-craft.md](references/video-craft.md)（画面结构、去网页感、字幕融合、动效与声音导演规范） |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（四项文案、三层标签、辰奕品牌主张与字段映射） |
 | 三平台定制封面（按需，多号组可扩展） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（「意图电商」口播系列规范；其他号组按需新增独立模板规范） |
+| 母素材与 1 母片 + 3 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、1 母片 + 3 延伸子片、防传混命名与 `delivery/` 交付包） |
 | 审核与分发 | 3441293738/creatorhub | `creatorhub/` | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）、[references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
 
-各配套仓库的具体命令、参数和能力边界一律以上述相对路径里的项目自身文档为准；本文件及 `references/` 只保留本工作区的目录规范、串联顺序、文案/封面设计规范与安全红线，不再单独手抄维护上游工具明细。
+各配套仓库的具体命令、参数和能力边界一律以上述相对路径里的项目自身文档为准；本文件及 `references/` 只保留本工作区的目录规范、串联顺序、文案/封面/矩阵裂变规范与安全红线，不再单独手抄维护上游工具明细。
 
-## 四种入口
+## 五种入口
 
 | 用户说 | 入口 | 走哪些步骤 |
 |---|---|---|
 | 「跑一条」「按热点做一条」 | A 热点原创 | 0 → 1 → 3 → 4 → 5 → 6 → 7 |
 | 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 0 → 3 → 4 → 5 → 6 → 7 |
 | 「复刻这条」「二创」「做同款」，或给出参考视频要求照着做 | C 复刻 | 0 → 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
-| 「发这条成片」「直接发 xxx.mp4」「帮我分发这个视频」（给出待发成片而非参考视频） | D 已有成片直发 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与审核分发，不必跑全量拆片） |
+| 「发这条成片」「直接发 xxx.mp4」「帮我分发这个视频」（给出待发成片而非参考视频） | D 已有成片直发 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若原成片在工作区外则**只读复制**进 `output/final.mp4`，严禁移动/删除用户源文件；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与审核分发，不必跑全量拆片） |
+| 「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出「原片 + 配套素材」要求做 1 母片 + 3 条不同风格子片 | E 母素材裂变矩阵 | 按 [references/multi-variant.md](references/multi-variant.md) 执行 `E0 → E1(未处理先粗剪+闸门1) → 母素材确立 → E2(完整特效母片+3封面+3文案) → E3(3子片延伸规划+闸门2) → E4(3子片各自独立补素材/剪辑/3封面/3文案) → E5(单条+跨4片审核与路径收口) → E6(生成 delivery/ 交付包与归档)` |
 
 指令里的附加词：
 
@@ -63,6 +72,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：热点�
 - 「直接自动发（封面后补）」：即使制作了定制封面，也继续调用 CreatorHub 自动发布视频，由用户事后去各平台后台补换封面。
 - 「不带品牌口号」：跳过 [references/copywriting.md](references/copywriting.md) 中的辰奕品牌主张原句与品牌标签。
 - 「先给我看」「只做不发」：做到成片（及按需封面、文案过审）停下，给出产物路径，不自动提交发布。
+- 入口 E 专用附加词：「已处理素材 / 直接当母素材」（跳过粗剪）、「未处理原片 / 先粗剪」（先做话题切割与去口气词并过闸门 1）、「一路跑完」（母素材确认后跳过闸门 2 直接跑完 1 母片 + 3 子片）、「拆三条」或「同内容三风格」（覆盖 3 子片自适应切分策略）。
 
 没有附加词时：三个平台都做；仅当视频明确命中已登记的系列封面规范（例如「意图电商」系列命中 [references/cover-design.md](references/cover-design.md)）或用户要求做定制封面时，才制作三张封面并停下交付手动发布；未命中专属封面系列（其他主题/其他号组无对应封面规范，或无出镜纯资讯视频）时不强行套用「意图电商」模板，默认不做定制封面、直接走 CreatorHub 自动发布。
 
@@ -107,13 +117,27 @@ runs/
 
 用不到的目录不建（入口 A、B 不带「参考爆款」时没有 `ref/`；不做定制封面时没有 `covers/`）。不在运行目录的根上另放文件，也不自创别的子目录。
 
+**入口 E（母素材 + 1 母片 + 3 风格子片）扩展目录结构**（完整细则与防传混前缀命名见 [references/multi-variant.md](references/multi-variant.md)）：
+
+```text
+runs/<YYYYMMDD-HHMM>-<话题短名>/
+├── run.json                总控索引（entry: "E"、闸门状态、母素材/4片/交付包路径）
+├── raw/                    原始输入（原片 + 配套素材登记，原片只读）
+├── rough-cut/              粗剪话题切片与用户预处理区（仅未处理输入时建）
+├── master-assets/          【母素材】经确认的最终干净原片切片 + 配套素材 + manifest.json
+├── master/                 【母片】script/、materials/、film/、output/00-master-*.mp4、covers/00-master-*.png、publish/publish.json
+├── variants/               【3 条延伸子片】v1-<风格>/、v2-<风格>/、v3-<风格>/（同构独立目录，防传混前缀 01-v1 / 02-v2 / 03-v3）
+├── delivery/               【统一交付包】INDEX.md + 00-master/ + 01-v1-*/ + 02-v2-*/ + 03-v3-*/（含成片、3封面、copy.md）
+└── tmp/                    草稿和中间文件，运行结束时删掉
+```
+
 **`run.json`**：建目录时就写，每做完一步更新一次，中途停下也要留下当时的状态。字段：
 
 - `id`：目录名
 - `topic`：完整的话题
-- `entry`：`A`、`B`、`C` 或 `D`（兼容旧记录 `publish-existing`）
+- `entry`：`A`、`B`、`C`、`D` 或 `E`（兼容旧记录 `publish-existing`）
 - `started_at`、`finished_at`：带时区的时间
-- `status`：`running`（进行中）、`made`（成片及按需封面/过审文案已出、待人工或指令发布）、`published`（要发的平台都发成功）、`partial`（部分平台成功）、`failed`（失败）、`stopped`（按用户要求或因问题停下）
+- `status`：`running`（进行中）、`waiting_approval`（暂候用户人工确认，如入口 E 输入态判定 / 闸门 1 / 闸门 2 或无看图能力等待人工目检；此态不删续跑中间态、不提前写入 `topics-log.jsonl`，用户回复后复用原运行目录恢复为 `running` 续跑）、`made`（成片及按需封面/过审文案已出、待人工或指令发布）、`published`（要发的平台都发成功）、`partial`（部分平台成功）、`failed`（失败）、`stopped`（用户取消或因问题终止停下）
 - `step`：做到第几步
 - `platforms`：每个平台的任务 id、状态、作品链接
 - `versions`：OpenFilm 的版本号，rea-video 和 CreatorHub 的提交号
@@ -124,7 +148,7 @@ runs/
 ## 步骤 0：开始前检查
 
 1. 环境：执行 `. .agents/skills/short-video-pipeline/scripts/env.sh`。
-2. 配套仓库：`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`、`creatorhub/creatorhub.py` 三者都在。缺任何一个，先按 [references/setup.md](references/setup.md) 装好再继续。（入口 D 已有成片直发仅需 `creatorhub/creatorhub.py` 和 `ffprobe`，不阻塞于另外两个仓库。）
+2. 配套仓库：`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`、`creatorhub/creatorhub.py` 三者都在。缺任何一个，先按 [references/setup.md](references/setup.md) 装好再继续。（入口 D 已有成片直发仅需 `creatorhub/creatorhub.py` 和 `ffprobe`；入口 E 默认交付手动发布，核心仅需 `openfilm`、`ffmpeg`、`ffprobe`，未处理输入或需人声分轨/ASR 时另需 `rea-video`，不阻塞于 CreatorHub。）
 3. CreatorHub：`curl -fsS http://127.0.0.1:8000/health`。不通就在执行过环境脚本的 shell 里，进 `creatorhub/` 后台执行 `python3 creatorhub.py start --no-open`，等到通。（仅当本次不调用 CreatorHub 采集/下载且走「带定制封面交付手动发布」或「先给我看」时，CreatorHub 未启动不阻塞制作。）
 4. 账号：需要调用 CreatorHub 采集或自动发布时，按 `references/creatorhub-api.md` 的「查账号」取每个平台可发布的账号（`status=active` 且 `account_role != "crawler"`；小红书另须 `has_creator=true`）。账号 id 每次现查。某平台不可发布时这次跳过它，并在最后告诉用户原因。需要自动发布但一个可用账号都没有时，请用户打开 `http://127.0.0.1:8000` 登录后再继续。带定制封面改走手动发布交付时，不因某平台登录态失效阻塞制作与交付，但在最终汇报中顺带提示异常账号。
 5. 建运行目录，写 `run.json`，见「归档规范」。
@@ -167,7 +191,7 @@ runs/
    - 用户给了本地文件：复制进来。
    - 用户给了链接或分享文案：用 CreatorHub 的「下载分享链接」，`output_dir` 填运行目录里 `ref/` 的绝对路径（`$SVP_ROOT/runs/<目录>/ref`）。
    - 「参考爆款」：用 CreatorHub 关键词采集找到该题下点赞最高的视频，再用它的链接下载。
-2. 在运行目录里，先执行环境脚本（`. ../../.agents/skills/short-video-pipeline/scripts/env.sh`），再按 `rea-video` skill 执行 `survey`（能看图且未开 VLM 时先看后拆）和 `../../rea-video/.venv/bin/rea-video decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
+2. 在运行目录里（或先在根目录 source `env.sh` 再 `cd` 进运行目录），执行环境脚本后，按 `rea-video` skill 执行 `survey`（能看图且未开 VLM 时先看后拆）和 `"$SVP_ROOT/rea-video/.venv/bin/rea-video" decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
 3. 按 rea-video skill 说的顺序读拆片包：`ref/out/VIDEO.md` → `video/content.md`（叙事线）→ `video/timeline.md` / `video/rhythm.md` → `video/packaging.md` → `video/sound.md` → `video/remake.md`。不要读 `breakdown.json`。
 4. 写出要保留的东西，记进 `script/storyboard.json` 的 `reference` 字段：
    - 叙事线：每一段在抓注意、交代背景、给证据、转折还是给结论。
@@ -186,27 +210,30 @@ runs/
 
 ## 步骤 3：脚本和分镜
 
+**先读 [references/video-craft.md](references/video-craft.md)**，从分镜源头杜绝「网课小窗 + 网页后台卡片墙 + 机械特效堆砌」的流水线违和感。
+
 1. 查事实与定主旨：视频里出现的数字、时间、说法都要有出处，查不到的不写，出处记进 `topic/topic.json`；同时先用一句话写清全片要回答的核心问题与主要支撑观点，提前对齐后续三平台封面承诺（确保封面答应给观众的东西能在成片里找到）。
-2. 写 `script/storyboard.json`：每镜包含起止秒、屏幕文字（每屏不超过两行）、画面描述、画面做法（`code` / `image` / `video` / `library`）。
-   - 入口 A、B：总长 15–30 秒，5–8 镜；第一镜 3 秒内说出看点，最后一镜给一句总结。
-   - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案。
+2. 写 `script/storyboard.json`：每镜包含起止秒（口播片严格卡语流重音/气口，不机械取整数秒）、镜头型（`A 全屏多景别口播` / `B 全屏口播+局部轻量浮层` / `C 全屏动态 B-roll` / `D 极简概念动画`）、屏幕文字（每屏除字幕外 ≤1 组焦点、辅助字 ≤20–25 字）、画面描述、画面做法（`aroll` / `code` / `video` / `image` / `library`），并规划全片 **BGM 静音呼吸点**与 **SFX 预算上限**（30s ≤4、60s ≤7、140s ≤12）。
+   - 口播出镜类视频：全屏真人出镜占比默认 **≥55%–75%**，并保留 **≥25% 纯人像干净呼吸段**（零贴纸、零顶栏、零卡片）；严禁把「顶部横屏小窗 + 下半多格卡片」作为默认模具。
+   - 入口 A、B（无出镜纯资讯片）：总长 15–30 秒，5–8 镜；第一镜 3 秒内说出看点，最后一镜给一句总结，同样严守一屏单焦点与少字大字留白。
+   - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案；若用户认可某条对标视频的剪辑语言，可按 `references/video-craft.md` 第八节沉淀风格卡。
 3. 默认不配音，字幕加音乐。参考视频有人声而本机没有可用的配音服务时，仍按无配音做，并在最后告诉用户。
 
 ## 步骤 4：素材
 
-**先整篇读 `openfilm skill media`**（在 `film/` 目录里执行 `../../../node_modules/.bin/openfilm skill media`）及 [references/sourcing.md](references/sourcing.md)。
+**先整篇读 `openfilm skill media`**（先 source `env.sh`，再在目标 `film/` 目录里执行 `openfilm skill media`）、[references/sourcing.md](references/sourcing.md) 与 [references/video-craft.md](references/video-craft.md)。
 
 > **前置动作**：OpenFilm 执行 `openfilm get --take` 前若要求目录已是项目（否则报 `is not in a project`），先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。具体命令写法以 `node_modules/openfilm/manual/` 为准。
 
 按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
-- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
-- **B. 数据对比、参数表、清单、金句标题、流程动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）。
+- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。音效优先选**温润低频、轻柔空气、自然材质（纸张/笔触/木质轻点）**，避开刺耳电子故障音、夸张卡通音与高音量铃铛。
+- **B. 极简概念隐喻、对比与白板手绘动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）；**严守极简大字留白（一屏只演 1 个视觉动作、≤20 字、核心字 ≥56px、次级字 ≥32px），严禁画成多格细框 SaaS 网页后台或密密麻麻 PPT 表格**。
 - **C. 科技巨头发布新闻 / 产品报道 / 真实事件画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再由当前 agent 调用 `scripts/fetch_asset.py` 主动抓取并落盘到 OpenFilm 素材区：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、按需截 1080px 干净官网首屏；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
-- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → 已配免费 Key 时用 OpenFilm 内置 **Pexels / Pixabay**（用 2–4 个英文视觉关键词，视频加 `--orientation portrait`）→ 未配 Key 或缺图时用 `fetch_asset.py stock` 查免 Key 公开免版权库（Wikimedia Commons、NASA、Internet Archive、Openverse）。
-- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类代码画面。
+- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **动态竖屏视频（MP4）绝对优先于静态照片**（已配免费 Key 时优先 `openfilm get video-search --orientation portrait`；无 Key 时可查 Wikimedia/Archive 公开视频或官方 Demo 切片）→ 仅在无匹配动态视频时用静态高清图兜底（且单张静态图停留 **≤3.5 秒**，绝不用一张死图硬撑 10 秒以上）。
+- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类极简代码画面。
 
 素材放哪里：
 
@@ -225,28 +252,31 @@ runs/
 
 ## 步骤 5：剪辑和渲染
 
-**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`），再整篇读 `openfilm skill film`（兼容 `edit`）**，按它的做法建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
+**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`）、整篇读 `openfilm skill film`（兼容 `edit`），并严格执行 [references/video-craft.md](references/video-craft.md)**，按它的导演级视听规范建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
 
-本工作区的约定：
+本工作区的约定（技术底线 + 视听导演铁律）：
 
-- 每条命令都在运行目录的 `film/` 里执行，先执行环境脚本，命令是 `../../../node_modules/.bin/openfilm`（source `env.sh` 后直接 `openfilm` 也指向它）。
-- 项目就建在运行目录的 `film/`，不用 OpenFilm 默认的项目位置。
-- 画面 1080×1920；**竖屏平台安全区**：顶部留 ≥160px（避开状态栏/搜索栏），底部留 ≥360px（避开抖音/小红书/视频号底栏文案），主视觉和标题控制在 2 行以内，不遮挡、不折出第 3 行。
-- 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
+- 每条命令都在目标 `film/` 里执行（单片为 `runs/<目录>/film/`，入口 E 为 `master/film/` 或 `variants/vN-<风格>/film/`），先在根目录或按对应层级 source `env.sh`，直接调用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`，避免硬写 `../../../` 在入口 E 深层目录失效）。
+- 项目就建在运行目录的 `film/`（入口 E 建在各自 `master/film/` 或 `variants/vN-<风格>/film/`），不用 OpenFilm 默认的项目位置。
+- **构图与安全区**：画面 1080×1920；顶部留 ≥160px、底部留 ≥360px 避开平台 UI；口播片以**全屏 4K 三景别跳切（1.00 ↔ 1.12 ↔ 1.20）**为主舞台（≥55%），保留 ≥25% 纯人像干净留白段，**默认不加常驻顶部导航栏/进度条**；切 B-roll 时干脆全屏切走（2–4.5s）**不贴右上角监控小窗**；开场/高光金句可按需采用 OpenFilm 原生 `--of-cutout: 1` 人前字后景深层次（须 `openfilm look` 核验边缘洁净）。
+- **字幕融画与短句**：彻底淘汰厚重纯黑方块底，**先运行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/format_captions.py"`** 从原始 SRT / `transcript.json` 自动切分为**透明底粗体柔影描边、单行 6–12 字、带 `<c.hi>` 单词主题色高亮**的 WebVTT（支持 4 槽位定版主题 `--theme master|v1|v2|v3` 或 `dark|punch|light|cinema` 及 `--mute-ranges` 在中央大字金句时段自动让位），基线锁定在 `y ≈ 1340–1450px`。
+- **动效与调色**：UI/文字入场统一使用快进慢出物理阻尼缓动（`0.22–0.38s`，位移 `16–28px`，禁用机械 `linear` 弹入），85%+ 切镜采用干净硬切并卡在语流重音；全片色板锁定 ≤2 主色 + 1 点缀色，原片偏灰时用统一轻度 `filter` 或 `--of-lut` 融合人像与图形层。
+- **声音呼吸与音效克制**：BGM 说话期间压在人声下 **-22~-26 dB**（`volume` 约 `0.07–0.13`），且必设 **1–3 次金句前静音真空呼吸**（绝不一根死直线到底）；SFX 严守总数上限（30s ≤4、60s ≤7、140s ≤12）与 **-18~-26 dB** 轻托音量，**禁止每切必“咻”、禁止刺耳电子/高音铃盖人声**；短音效不手写 `#t=0,x` 截尾，不同音效分轨防重叠。
+- 横屏官图或带文字的演示图放进竖屏时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
 - 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
-- 短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾（MP3 编码填充易导致 WebAudio 解码时长略短于 `ffprobe` 而报错），转场音效与点缀音效分放不同 `<section>` 防重叠；按 `openfilm look` 的响度提示清理过轻或未使用的音频。
 - 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
-- 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`。每次都带 `--out`，不用默认的导出位置。
+- **渲染前强制反违和自动质检**：正式渲染前先执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/check_craft.py" --film . --mode talking_head --json-out ../output/check/craft-lint.json`（无出镜纯资讯片改 `--mode faceless`），确认硬性报错归零后再渲染；
+- 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`）。每次都带 `--out`，不用默认的导出位置。
 
-出片前自检，全部通过才能进入发布：
+出片前自检，**技术项 + 审美反违和项全部通过**才能进入发布：
 
-- 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
-- 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
-- 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
+- **技术与画面核验**：每镜至少用 `openfilm look` 看一帧（文字不出框、不遮脸、无错字、无媒体水印、无音频告警）；渲染完成后执行 `openfilm look --full` & `ffprobe`（1080×1920、时长一致、有音轨、`-14 LUFS` 且真峰值 `< -1.0 dBTP`、无黑帧/闪屏/跳帧）。
+- **10 项导演级审美反违和门禁（强制）**：确认 `scripts/check_craft.py` 输出 `passed: true`（落盘 `output/check/craft-lint.json`），并结合目检逐项核对 [references/video-craft.md](references/video-craft.md) 第七节全部 10 项（全屏人像占比、去网页后台/顶栏/英文眉标、单帧单焦点与字号、纯人像留白、B-roll 动态生命力、去黑膏药短句高亮字幕、文字零重复打架、缓动卡点、SFX 频次与低音量克制、BGM 静音呼吸与整体不违和体感），结果写入 `check.json` 的 `aesthetic_checks`。
+- **入口 C 额外核验**：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
-自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，每项检查的结论写进 `check.json`。
+自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，技术与 10 项审美结论写进 `check.json`。
 
-不合格就修到合格。修不好就停下报告，不发布。
+不合格（无论技术瑕疵还是“像网页/PPT 模板、特效字幕音效堆砌违和”）就重构修到合格。修不好就停下报告，不发布。
 
 ## 步骤 6：文案、封面与分发
 
@@ -263,8 +293,8 @@ runs/
 - **触发条件**：仅当视频明确属于已沉淀封面规范的系列（当前为「意图电商」系列 → [references/cover-design.md](references/cover-design.md)），或用户显式附加「带封面」「做意图电商封面」时执行；其他主题、其他系列或其他账号组的视频**不得强行套用「意图电商」模板或图片**（有对应系列规范时按该规范走；用户要求做封面但尚无对应模板时先确认系列名与视觉风格；未命中且无附加词时跳过）。
 - **先读对应系列的封面规范**（如「意图电商」系列读 [references/cover-design.md](references/cover-design.md)，并看一眼标杆样图 `assets/brand/samples/yitu-cover-ref-shipinhao.jpg` 对齐质感）：
   - 直接承接 `6.1` 产出的三平台两行 `cover_title`，并用 `字号 × 字数 ≤ 980px` 校验行宽（如有微调同步回写 `publish/publish.json`）；
-  - 按该系列约定复用对应的顶部固定图（如「意图电商」系列的 `assets/brand/yitu-series-9x16.png`、`yitu-series-3x4.png`，缺失时按规范第 14.2 节处理，禁止每期重做拉伸或混用到其他系列）；
-  - 用工作区工具从成片抽取 3 张不同 1920×1080 帧、抠像并做「头顶暗、肩部亮 + 靠平面侧暖橙」边缘光晕，过程素材放 `materials/covers/`；
+  - 若命中专属系列规范（如「意图电商」系列），其专题顶部标题图按 [cover-design.md](references/cover-design.md) 第 14.2 节存放在当次运行目录 `materials/covers/`（非全站通用资产，不提交入 git，禁止跨系列混用）；
+  - 用工作区工具为每个目标平台抽取互不重复的人物清晰帧并抠像、做「头顶暗、肩部亮 + 靠平面侧暖橙」边缘光晕（**有干净无字幕母素材/原片时优先从源片抽帧**，兼容 `1920×1080` 横屏与 `1080×1920` 竖屏原帧，避免成片花字/字幕遮挡人物；无干净源片时再从成片挑选无文字遮挡的清晰帧），过程素材放 `materials/covers/`；
   - 渲染三平台封面落盘至 `covers/douyin.png`（`1080×1920`）、`covers/shipinhao.png`（`1080×1920`）、`covers/xhs.png`（`1080×1440`），并写 `covers/cover-spec.json`；
   - **Agent 必须亲自打开全部 3 张 PNG 看图逐项核对规范第 12 节 8 项检查**，未全部通过不得进入下一步。
 
@@ -284,14 +314,14 @@ runs/
 
 ## 步骤 7：记录和汇报
 
-1. 把运行目录的 `run.json` 更新到最终状态，删掉 `tmp/`。
-2. 往 `runs/topics-log.jsonl` 追加一行：日期、入口、题目、来源、运行目录、各平台任务 id、状态、作品链接。中途停下、待手动发布或失败的运行也要记一行。
-3. 检查归档：运行目录的结构符合「归档规范」，这次产生的文件没有留在工作区之外，也没有散在工作区的其他位置。
+1. 把运行目录的 `run.json` 更新到最终状态，删掉 `tmp/`。（注意：处于 `waiting_approval` 暂候用户确认阶段时，不删续跑所需中间态，也不提前执行第 2 步写 `topics-log.jsonl`，待整单到达终态 `made`/`published`/`partial`/`failed`/`stopped` 时再统一收口。）
+2. 往 `runs/topics-log.jsonl` 追加一行：日期、入口、题目、来源、运行目录、各平台任务 id、状态、作品链接（入口 E 同行附 `publish_mode`、`delivery_dir`、`target_platforms` 与成片数）。整单终止停下、待手动发布或失败的运行也要记一行。
+3. 检查归档与路径规范：运行目录的结构符合「归档规范」，文件名无空格/非法符号，JSON/MD 全部使用相对路径无绝对路径硬编码，这次产生的文件没有留在工作区之外，也没有散在工作区的其他位置（入口 E 另须核对 `delivery/INDEX.md` 及 4 个 `delivery/0N-*/` 子目录内成片、目标平台封面与 `copy.md` 全部齐全非空且与源产物同步一致）。
 4. 汇报内容：
-   - 做了什么题和原因、运行目录和成片路径；
-   - 三平台定制封面路径（如有）；
-   - 按平台整理好的可直接复制四项文案（封面标题、表单标题/视频号短标题、视频描述、三层标签候选与空格分隔「本条发布组合」）；
-   - 自动发布模式列出每个平台结果和链接；带封面手动发布模式明确提示「已按封面规范产出并过审，请连同封面在各平台后台手动发布」；以及需要用户处理的其他事项（如账号掉线需补登）。
+   - 做了什么题和原因、运行目录和成片路径（入口 E 给出母素材摘要、`delivery/` 总交付路径与 `delivery/INDEX.md` 索引）；
+   - 目标平台定制封面路径（如有；入口 E 按目标平台列出 4 片防传混命名封面路径，默认三平台共 12 张，指定部分平台时为 `4 × M` 张；免封面时省略）；
+   - 按目标平台整理好的可直接复制四项文案（封面标题、表单标题/视频号短标题、视频描述、三层标签候选与空格分隔「本条发布组合」；入口 E 同步指向各交付子目录的 `copy.md`）；
+   - 自动发布模式列出每个平台结果和链接；带封面手动发布模式明确提示「已按规范产出并过审，请连同封面在各平台后台手动发布」；以及需要用户处理的其他事项（如账号掉线需补登）。
 
 ## 子代理
 
@@ -303,26 +333,30 @@ runs/
 - 有多条参考视频时，每条一个子代理做拆解。
 - 步骤 1 取各平台热榜和查小红书热度。
 - 步骤 4 里互不依赖的各镜素材：每个子代理负责若干镜的图片、视频或页面文件。
+- 入口 E（`E4`）：在母片与 `master-plan.json` 通过闸门 2 后，并行派 3 个子代理分别负责 `variants/v1-*/`、`variants/v2-*/`、`variants/v3-*/` 三个物理隔离目录的独立补素材、独立 OpenFilm 剪辑/渲染/初检与本子片目标平台封面/文案初稿及单条 `publish.json`。
 
 必须由主 agent 自己串行做的：
 
-- 写 `film.html`。子代理可以各写各的页面文件和素材，但 `film.html` 只有主 agent 改。
-- 渲染和出片自检。
+- 单片流程（入口 A/B/C）写 `film.html`（子代理只写各自页面文件与素材）、单片渲染和出片自检。
+- 入口 E 的粗剪汇报与母素材确立（闸门 1）、母片定调与 3 子片规划（闸门 2）、全部 4 条成片与全部定制封面的最终看图复核、跨 4 片矩阵审核（`E5`）与 `delivery/` 统一交付包组装（`E6`）。
 - 步骤 6 的全部发布操作。
 - 同一个账号上的 CreatorHub 操作，不要同时发起两个。
 
 派出时的要求：
 
-- 子代理看不到你的上下文。交代清楚：运行目录、要先读的仓库 skill 的路径、输入文件、要产出的文件路径（按「归档规范」指定到运行目录里的具体位置）、执行命令前先执行环境脚本、不许做的事（不发布、不调用付费生成、不改 `film.html`、不在运行目录之外存放文件）。
+- 子代理看不到你的上下文。交代清楚：运行目录、要先读的仓库 skill 的路径、输入文件、要产出的文件路径（按「归档规范」指定到运行目录里的具体位置）、执行命令前先在根目录或按正确层级执行环境脚本 `env.sh`、以及明确权限边界：
+  - **公共红线（所有入口子代理严禁）**：不发布、不调用付费生成、不在运行目录之外存放文件、不删改用户的外部源文件；
+  - **单片流程子代理额外禁止**：不改主项目的 `film.html`、不做整片渲染与最终文案；
+  - **入口 E（`E4`）子代理隔离授权**：允许在自身专属目录 `variants/vN-<风格>/` 内写该子片的 `film/film.html`、渲染 `output/0N-vN-*.mp4` 并产出本子片封面/文案初稿，但**严禁修改 `raw/`、`master-assets/`、`master/` 及另外两条子片目录**。
 - 子代理交回的东西，主 agent 要自己打开文件或看图核对后再用，不只看它的汇报。
-- 不值得派的：几分钟内能做完的事、各平台文案。
+- 不值得派的：单片流程中几分钟内能做完的事、单条视频的各平台文案（入口 E 3 子片因各有独立成片，其初稿随各自子代理在隔离目录产出，回收后由主 agent 在 `E5` 亲自核查与跨片去重）。
 
 ## 能力不足时的退路
 
 | 你做不到 | 怎么办 |
 |---|---|
 | 联网搜索 | 只要本机有外网，仍可用 `scripts/fetch_trends.py --mode search` 和 `scripts/fetch_asset.py` 查新闻与抓素材；完全离线时只做不依赖具体数据的题或请用户提供资料 |
-| 看图 | rea-video 按它 `references/review.md` 的「看不了图时的规则」做；OpenFilm 画面或定制封面无法目检时停下，不自动发布也不标记视觉自检通过，明确说明需用户人工目检 |
+| 看图 | rea-video 按它 `references/review.md` 的「看不了图时的规则」做；OpenFilm 画面、入口 E 马赛克核验帧或定制封面无法目检时，在 `check.json` / `cover-spec.json` 记为 `pending_human_visual_review`（严禁伪造通过），将 `run.json` 置 `waiting_approval` 停下交用户人工目检（入口 E 可整理预览并列出全部待目检路径，但不自动发布也不标记 `cross_audit_passed: true`） |
 | 生成图片或视频 | 按 [references/sourcing.md](references/sourcing.md) 走 `scripts/fetch_asset.py`（官方新闻配图/截图/短切片、免版权公开图库）和 OpenFilm 内置 Pexels/Pixabay；仍无素材再退回自带库和代码画面 |
 | 派子代理 | 自己按顺序做 |
 
