@@ -136,9 +136,9 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 无论输入「已处理」还是「未处理」，均检查原片音轨是否自带背景音乐（BGM）或明显环境底噪（已处理口播片常混有原 BGM）；
    - 若原片**自带 BGM 或需精准口播时间轴**：执行 `"$SVP_ROOT/rea-video/.venv/bin/rea-video"` 拆解至 `raw/rea-out/`，提取完整口播逐字稿与干净人声轨 `stems/vocals.wav`；在确立母素材时同步裁切对齐后的干净人声轨放入 `master-assets/clips/<切片名>-vocals.wav`（或混出无 BGM 的干净口播切片），并在 `master-assets/manifest.json` 记 `has_original_bgm: true` 与 `vocals_track`。下游母片与 3 条子片一律以干净人声轨为底再铺各自风格 BGM，彻底杜绝双 BGM 叠音打架！
 5. **判定「已处理 / 未处理」**：
-   - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」→ `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1，按零重复拷贝原则（同卷硬链接/`cp -c` 或规范引用）将原片切片（及可选 `*-vocals.wav`）与规范化重命名后的配套素材归档进 `master-assets/` 并写 `manifest.json`；
-   - 用户明确说了「未处理 / 原片 / 先粗剪」→ `gates.input_state_confirmed = true`，进入步骤 E1；
-   - 用户未明确说明处理状态时 → Agent 先结合 `ffprobe` 与轻量试听/静音检测初步判断，将 `run.json` 置 `status: "waiting_approval"`、`gates.pending_gate: "gate_0_input_state"`，**停下用一句话向用户确认是已处理还是未处理**，绝不擅自跳过粗剪。
+   - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1，按零重复拷贝原则（同卷硬链接/`cp -c` 或规范引用）将原片切片（及可选 `*-vocals.wav`）与规范化重命名后的配套素材归档进 `master-assets/` 并写 `manifest.json`；
+   - 用户明确说了「未处理 / 原片 / 先粗剪」，或输入位于工作区 `素材投递区/未处理原片/` 下且用户未声明已处理 → `gates.input_state_confirmed = true`，进入步骤 E1；
+   - 用户未明确说明处理状态且输入不在 `素材投递区/已粗剪/` 或 `素材投递区/未处理原片/` 中 → Agent 先结合 `ffprobe` 与轻量试听/静音检测初步判断，将 `run.json` 置 `status: "waiting_approval"`、`gates.pending_gate: "gate_0_input_state"`，**停下用一句话向用户确认是已处理还是未处理**，绝不擅自跳过粗剪。
 
 ### 步骤 E1：粗剪与强制人工确认（闸门 1，仅未处理输入触发）
 

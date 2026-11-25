@@ -46,7 +46,8 @@
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
 | `creatorhub/` | 否 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub)：账号、采集、下载、发布，本机接口 `http://127.0.0.1:8000` |
 | `browsers/` | 否 | 浏览器内核：`ms-playwright/`（OpenFilm 渲染和 CreatorHub 共用），以及可选的指纹浏览器 |
-| `.local/` | 否 | 配套仓库的设置、模型、缓存：`openfilm/`、`openfilm-user/`、`rea-video/`、`npm-cache/`、`pip-cache/` |
+| `.local/` | 否 | 配套仓库的设置、模型、缓存：`openfilm/`、`openfilm-user/`（其中 `saved/` 下按 `broll/`、`music/`、`sfx/`、`series/` 存放跨期复用的公共素材，可被 `openfilm get my-media` 检索）、`rea-video/`、`npm-cache/`、`pip-cache/` |
+| `素材投递区/` | 否 | 后续各期视频与配套素材投递区（不进 git，同盘零重复拷贝）：`已粗剪/`（已处理可直接当母素材）、`未处理原片/`（需先粗剪与预处理）、`参考爆款/`（入口 C 复刻参考）、`待直发成片/`（入口 D 待直发成片） |
 | `runs/` | 否 | 归档：每次运行一个目录，外加总索引 `topics-log.jsonl` |
 
 参考文件：
@@ -67,7 +68,7 @@
 
 - 不要对整个工作区或 `browsers/`、`.local/`、`**/.venv/`、`creatorhub/data/`、`creatorhub/node_modules/`、`creatorhub/desktop/`、`creatorhub/frontend/`、`node_modules/openfilm/library/` 做全量递归扫描。
 - 查询任何配套工具的用法、能力或接口时，直接按 `references/repos.md` 中的相对路径读取该工具自带文档（`node_modules/openfilm/`、`rea-video/`、`creatorhub/`）或运行中的 `http://127.0.0.1:8000/openapi.json`，不要全量扫描其源码目录。
-- 仅按明确路径访问所需文件：`runs/<目录>/`、`rea-video/`（`AGENTS.md`、`README.md`、`skills/`、`docs/`）、`node_modules/openfilm/`（`SYSTEM_PROMPT.md`、`README.md`、`SPEC.md`、`manual/`）、`creatorhub/`（`README.md`、`guide/`、`app/api/`、`app/transport_matrix.py`、`app/platforms/`）。
+- 仅按明确路径访问所需文件：`素材投递区/<分类>/<期次>/`、`runs/<目录>/`、`rea-video/`（`AGENTS.md`、`README.md`、`skills/`、`docs/`）、`node_modules/openfilm/`（`SYSTEM_PROMPT.md`、`README.md`、`SPEC.md`、`manual/`）、`creatorhub/`（`README.md`、`guide/`、`app/api/`、`app/transport_matrix.py`、`app/platforms/`）。
 
 ## 不要做的事
 
