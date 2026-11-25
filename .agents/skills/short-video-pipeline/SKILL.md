@@ -45,7 +45,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
 | 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md`、`rea-video/skills/rea-video/references/`、`rea-video/docs/` |
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
-| 剪辑、渲染 | openfilm/openfilm | `node_modules/openfilm/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` |
+| 剪辑、渲染与特效工艺 | openfilm/openfilm + 本工作区规范 | `node_modules/openfilm/`、`.agents/.../references/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/editing-vfx.md](references/editing-vfx.md) |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（四项文案、三层标签、辰奕品牌主张与字段映射） |
 | 三平台定制封面（按需，多号组可扩展） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（「意图电商」口播系列规范；其他号组按需新增独立模板规范） |
 | 母素材与 1 母片 + 3 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、1 母片 + 3 延伸子片、防传混命名与 `delivery/` 交付包） |
@@ -249,7 +249,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ## 步骤 5：剪辑和渲染
 
-**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`），再整篇读 `openfilm skill film`（兼容 `edit`）**，按它的做法建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
+**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`）、整篇读 `openfilm skill film`（兼容 `edit`）以及 [references/editing-vfx.md](references/editing-vfx.md)**，按 OpenFilm 做法与本工作区剪辑/特效工艺规范建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
 
 本工作区的约定：
 
@@ -259,7 +259,8 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - **人脸构图、PiP 分屏与防 PPT 感约定**：
   - 全屏 16:9 裁 9:16 口播叠加底部浮卡时，必须通过上提构图（如 `scale(1.08–1.10) translateY(-5%)`）让人物下巴稳在 `y ≤ 1120px` 以上，浮卡置于下巴以下且 `y ≤ 1540px`，**严禁卡片切嘴或糊住下巴**；
   - 宽幅 PiP 框（宽高比 `>1.85`）内直接对 16:9 原片设横向 `object-position` 无效，须用内层容器 `scale + translateX` 将人物居中并压暗无关空墙，避免右侧露大片死墙；
-  - 严禁对未出场信息卡使用 `opacity: 0.18–0.40` 灰暗幽灵预显（未讲到前保持 `opacity: 0` 或极简空槽，命中瞬间干脆入场）；卡片正文最小字号 `≥24px`，禁止 `overflow: hidden` 容器内容溢底裁切；尽量用动态实拍 B-roll 或交互式代码动效替代呆板静图。
+  - 严禁对未出场信息卡使用 `opacity: 0.18–0.40` 灰暗幽灵预显（未讲到前保持 `opacity: 0` 或极简空槽，命中瞬间干脆入场）；卡片正文最小字号 `≥24px`，禁止 `overflow: hidden` 容器内容溢底裁切；尽量用动态实拍 B-roll 或交互式代码动效替代呆板静图；
+  - **剪辑节奏、转场与特效工艺硬规（细则与原语代码见 [references/editing-vfx.md](references/editing-vfx.md)）**：严格执行分风格 ASL 上限与反死镜红线（4K 源片口播 `>4.5–6s` 须用 4K 无损阶梯跳切或锁眼推镜 `--fx-ax/--fx-ay`，全屏 B-roll/图形夺权 `≥15%`）；跨 `<section>` 切换同主体时上轨须比下轨提前 `≥0.034s`（防浮点 1 帧双人头叠影），连续同机位严禁切碎复用同套 `scale` 动画（防缩放回弹）；严禁“空放 `whoosh` + 1 帧硬切”，大亮度/景别跳变必加 `0.3–0.5s` 视觉桥接（`clip-path` 空间形变、`--fx-blur` 甩切、跨轨 `fade` 叠化或沉黑屏息）；优先调用 OpenFilm 原生 `--of-cutout: 1`、`--of-lut`、SVG `stroke-dashoffset` 与 `motion-kit` 物理缓动，告别单一 `cubic-out` PPT 卡片与伪监视器 `REC` 套壳。
 - 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
 - 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
 - **无延迟标准字幕写法**：`subtitles.html` 禁止在正序 `for` 循环中用 `t <= c[1] + 0.12/0.14` 直接 `break`（相邻紧密台词会被前句拖尾卡住 3–4 帧并吞掉入场动画）；统一按 `Math.min(c[1] + 0.12, nextStart - 0.001)` 截断尾延或逆序匹配，并确保跨镜切点字幕不串台。
@@ -273,11 +274,11 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 出片前自检，全部通过才能进入发布：
 
 - 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
-- **自动化声画与安全区红框门禁（必跑）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、末尾 `0.35s` 无截断人声、BGM 无零淡化硬切、字幕无延迟 Bug、末句无悬空半句、无底卡掉入 `y≥1540px`）；**并亲自打开带三平台安全区红框的 `output/check/safezone-grid.png` 与 `output/check/safezone-tail.png` 目检**，逐项确认：右侧按钮禁区（橙框 `x=930..1080, y=850..1500`）无压字/无遮徽章、底部红区（`y>1560`）与顶部红区（`y<180`）干净、全屏浮卡未切嘴挡下巴、卡片容器无 `overflow: hidden` 切底溢出、结尾收束停留与 BGM 淡出自然。
+- **自动化声画、切点与安全区红框门禁（必跑）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、末尾 `0.35s` 无截断人声、BGM 无零淡化硬切、无跨轨浮点双人头叠影、无连续镜缩放回弹、字幕无延迟 Bug、末句无悬空半句、无底卡掉入 `y≥1540px`）；**并亲自打开带三平台安全区红框的 `output/check/safezone-grid.png`、`output/check/safezone-tail.png` 与切点逐帧图 `output/check/safezone-cuts.png` 目检**，逐项确认：右侧按钮禁区（橙框 `x=930..1080, y=850..1500`）无压字/无遮徽章、底部红区（`y>1560`）与顶部红区（`y<180`）干净、全屏浮卡未切嘴挡下巴、卡片容器无 `overflow: hidden` 切底溢出、切点无闭眼/双头/亮度暴跌穿帮、结尾收束停留与 BGM 淡出自然。
 - 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
-自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`qc_video.py` 产出的 `safezone-grid.png`、`safezone-tail.png`、`qc-report.json` 与 `ffprobe` 输出 `ffprobe.json` 一并保留，每项检查的结论写进 `check.json`。
+自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`qc_video.py` 产出的 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`qc-report.json` 与 `ffprobe` 输出 `ffprobe.json` 一并保留，每项检查的结论写进 `check.json`。
 
 不合格就修到合格。修不好就停下报告，不发布。
 

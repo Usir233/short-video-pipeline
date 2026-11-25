@@ -11,7 +11,11 @@ Subcommands:
                 - Safe-zone visual overlay sheets (safezone-grid.png, safezone-tail.png)
                   marking Top 180px, Bottom 360px, Right button bar x=930..1080 y=850..1500,
                   and chin reference line y=1120
-                - Static film.html / subtitles.html / scenes CSS / publish.json gates
+                - Cut-point frame-burst verification (safezone-cuts.png: t-1f / t / t+1f)
+                - Editing & VFX craft checks: ASL/shot pacing, cross-track floating-point
+                  double-head overlap, continuous-shot scale snap-back, ghost-spoiler
+                  opacity, static line-through, fake REC HUD, BGM hard splice, SFX density
+                - Static subtitles.html lag-bug/opening/ending & publish.json gates
 """
 
 from __future__ import annotations
@@ -55,6 +59,14 @@ DESC_SECONDS_PATTERNS = [
 ]
 
 SHIPINHAO_FORBIDDEN_RE = re.compile(r"[,，.。!！、—\-()（）\[\]【】/\\|\s\r\n]")
+
+STYLE_ASL_THRESHOLDS = {
+    "master": 7.5,
+    "v1": 4.0,
+    "v2": 7.5,
+    "v3": 8.0,
+    "default": 7.5,
+}
 
 
 def rel_path(path: Path) -> str:
@@ -273,9 +285,68 @@ def cmd_probe_audio(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
+    clips: list[dict[str, Any]] = []
+    for m in re.finditer(r"<(video|iframe)\b([^>]*)>", section_html, flags=re.IGNORECASE):
+        tag = m.group(1).lower()
+        attrs = m.group(2)
+        src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
+        at_m = re.search(r'\bat=["\'](\d+(?:\.\d+)?)["\']', attrs)
+        id_m = re.search(r'\bid=["\']([^"\']+)["\']', attrs)
+        style_m = re.search(r'style=["\']([^"\']+)["\']', attrs)
+        if not src_m:
+            continue
+        raw_src = src_m.group(1)
+        base_src = raw_src.split("#", 1)[0]
+        at_val = float(at_m.group(1)) if at_m else 0.0
+        t_in: float | None = None
+        t_out: float | None = None
+        tm = re.search(r"#t=(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?", raw_src)
+        if tm:
+            t_in = float(tm.group(1))
+            t_out = float(tm.group(2)) if tm.group(2) else None
+        dur = (t_out - t_in) if (t_in is not None and t_out is not None) else None
+        end_val = (at_val + dur) if dur is not None else None
+        anim_name = None
+        if style_m:
+            am = re.search(r"animation:\s*([A-Za-z0-9_-]+)", style_m.group(1))
+            if am:
+                anim_name = am.group(1)
+        clips.append(
+            {
+                "tag": tag,
+                "id": id_m.group(1) if id_m else base_src,
+                "base_src": base_src,
+                "at": at_val,
+                "t_in": t_in,
+                "t_out": t_out,
+                "dur": dur,
+                "end": end_val,
+                "anim": anim_name,
+                "style": style_m.group(1) if style_m else "",
+            }
+        )
+    return clips
+
+
+def detect_style_slot(video: Path, film_dir: Path | None, explicit: str | None) -> str:
+    if explicit and explicit != "auto":
+        return explicit
+    hay = f"{video.as_posix()} {film_dir.as_posix() if film_dir else ''}".lower()
+    if "01-v1" in hay or "/v1-" in hay:
+        return "v1"
+    if "02-v2" in hay or "/v2-" in hay:
+        return "v2"
+    if "03-v3" in hay or "/v3-" in hay:
+        return "v3"
+    if "00-master" in hay or "/master/" in hay:
+        return "master"
+    return "default"
+
+
 def render_safezone_overlays(
-    video: Path, duration: float, out_dir: Path
-) -> dict[str, str]:
+    video: Path, duration: float, out_dir: Path, cut_points: list[float] | None = None
+) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     # 1080x1920 3-platform UI forbidden zones:
     # - Top 180px (status bar / Dynamic Island / platform tabs)
@@ -307,7 +378,6 @@ def render_safezone_overlays(
     grid_path = out_dir / "safezone-grid.png"
     tail_path = out_dir / "safezone-tail.png"
 
-    # Build 3x2 high-res safe-zone contact sheet (1620x1920)
     cmd_grid = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for t in timestamps:
         cmd_grid += ["-ss", f"{t:.2f}", "-i", str(video)]
@@ -332,7 +402,6 @@ def render_safezone_overlays(
     if proc1.returncode != 0:
         raise RuntimeError(f"safezone-grid render failed: {proc1.stderr.strip()}")
 
-    # Full-res 1080x1920 ending frame at duration - 0.8s
     tail_t = round(max(0.05, duration - 0.8), 2)
     proc2 = run_cmd(
         [
@@ -355,12 +424,60 @@ def render_safezone_overlays(
     if proc2.returncode != 0:
         raise RuntimeError(f"safezone-tail render failed: {proc2.stderr.strip()}")
 
-    return {
+    result: dict[str, Any] = {
         "safezone_grid": rel_path(grid_path),
         "safezone_tail": rel_path(tail_path),
         "grid_timestamps_sec": timestamps,
         "tail_timestamp_sec": tail_t,
     }
+
+    # Cut-point frame-burst verification (t-1f / t / t+1f) for up to 3 cuts
+    valid_cuts = [c for c in (cut_points or []) if 0.1 < c < (duration - 0.1)]
+    if valid_cuts:
+        # Pick up to 3 representative cuts (first, middle, last)
+        if len(valid_cuts) <= 3:
+            picked = valid_cuts
+        else:
+            picked = [valid_cuts[0], valid_cuts[len(valid_cuts) // 2], valid_cuts[-1]]
+        cuts_path = out_dir / "safezone-cuts.png"
+        cmd_cuts = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        f_cut_parts: list[str] = []
+        row_labels: list[str] = []
+        inp_idx = 0
+        for row_i, ct in enumerate(picked):
+            tri = [max(0.02, ct - 0.034), ct, min(duration - 0.02, ct + 0.034)]
+            row_inps = []
+            for tt in tri:
+                cmd_cuts += ["-ss", f"{tt:.3f}", "-i", str(video)]
+                lbl = f"c{inp_idx}"
+                f_cut_parts.append(f"[{inp_idx}:v]scale=360:640[{lbl}]")
+                row_inps.append(f"[{lbl}]")
+                inp_idx += 1
+            rlbl = f"row{row_i}"
+            f_cut_parts.append(f"{''.join(row_inps)}hstack=inputs=3[{rlbl}]")
+            row_labels.append(f"[{rlbl}]")
+        if len(row_labels) == 1:
+            final_map = row_labels[0]
+        else:
+            f_cut_parts.append(
+                f"{''.join(row_labels)}vstack=inputs={len(row_labels)}[cuts_out]"
+            )
+            final_map = "[cuts_out]"
+        cmd_cuts += [
+            "-filter_complex",
+            ";".join(f_cut_parts),
+            "-map",
+            final_map,
+            "-frames:v",
+            "1",
+            str(cuts_path),
+        ]
+        proc3 = run_cmd(cmd_cuts)
+        if proc3.returncode == 0:
+            result["safezone_cuts"] = rel_path(cuts_path)
+            result["cut_burst_timestamps_sec"] = [round(c, 3) for c in picked]
+
+    return result
 
 
 def strip_html(text: str) -> str:
@@ -370,12 +487,18 @@ def strip_html(text: str) -> str:
 
 
 def audit_film_dir(
-    film_dir: Path, duration: float, hard_failures: list[str], warnings: list[str]
-) -> dict[str, Any]:
-    details: dict[str, Any] = {}
+    film_dir: Path,
+    duration: float,
+    style_slot: str,
+    hard_failures: list[str],
+    warnings: list[str],
+) -> tuple[dict[str, Any], list[float]]:
+    details: dict[str, Any] = {"style_slot": style_slot}
+    cut_points: list[float] = []
     film_html = film_dir / "film.html"
     if film_html.exists():
         html_txt = film_html.read_text(encoding="utf-8", errors="replace")
+
         # 1. Check multi-segment BGM without fade
         bgm_sec = re.search(
             r'<section[^>]*id=["\']bgm["\'][^>]*>(.*?)</section>',
@@ -407,7 +530,69 @@ def audit_film_dir(
                 f"点缀/转场音效共 {sfx_count} 次（{duration:.1f}s 内平均每 {duration/sfx_count:.1f}s 一次），高于 <=1次/5s 建议红线，易显得嘈杂"
             )
 
-        # 3. Check wide PiP with horizontal object-position
+        # 3. Parse main-stage & speaker-pip for ASL, cross-track floating-point overlap, and scale snap-back
+        main_sec = re.search(
+            r'<section[^>]*id=["\']main-stage["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        pip_sec = re.search(
+            r'<section[^>]*id=["\']speaker-pip["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        main_clips = parse_clips_in_section(main_sec.group(1)) if main_sec else []
+        pip_clips = parse_clips_in_section(pip_sec.group(1)) if pip_sec else []
+
+        if main_clips:
+            main_clips.sort(key=lambda c: c["at"])
+            shot_count = len(main_clips)
+            asl = duration / shot_count if shot_count > 0 else 0.0
+            max_shot = max((c["dur"] or 0.0) for c in main_clips)
+            details["main_stage_shots"] = shot_count
+            details["asl_sec"] = round(asl, 2)
+            details["max_shot_sec"] = round(max_shot, 2)
+            cut_points = [c["at"] for c in main_clips[1:] if c["at"] > 0]
+
+            asl_limit = STYLE_ASL_THRESHOLDS.get(style_slot, 7.5)
+            if asl > asl_limit:
+                warnings.append(
+                    f"剪辑节奏偏慢：main-stage 共 {shot_count} 镜，平均镜长 ASL={asl:.2f}s（{style_slot} 槽位建议 <= {asl_limit:.1f}s），最长单镜 {max_shot:.2f}s，建议拆镜/加4K跳切或全屏B-roll打破僵硬"
+                )
+
+            # Check adjacent continuous <video> clips reusing the exact same scale animation (snap-back bug!)
+            for prev_c, next_c in zip(main_clips, main_clips[1:]):
+                if (
+                    prev_c["tag"] == "video"
+                    and next_c["tag"] == "video"
+                    and prev_c["base_src"] == next_c["base_src"]
+                    and prev_c["t_out"] is not None
+                    and next_c["t_in"] is not None
+                    and abs(prev_c["t_out"] - next_c["t_in"]) < 0.05
+                    and prev_c["anim"]
+                    and prev_c["anim"] == next_c["anim"]
+                ):
+                    hard_failures.append(
+                        f"film.html 连续同机位视频 `{prev_c['id']}` → `{next_c['id']}` 在 {next_c['at']:.2f}s 处切分并复用同一动画 `{prev_c['anim']}`，必然造成缩放倒退回弹穿帮，请合并为单条连续 <video>"
+                    )
+
+        # Check cross-track floating-point overlap: upper speaker-pip overlapping lower main-stage fullscreen <video>
+        if pip_clips and main_clips:
+            fs_videos = [c for c in main_clips if c["tag"] == "video"]
+            for pc in pip_clips:
+                if pc["end"] is None:
+                    continue
+                for fv in fs_videos:
+                    # Overlap or IEEE-754 boundary hazard (within +1e-9..+0.05s or full overlap)
+                    if pc["end"] > fv["at"] - 1e-6 and pc["at"] < (fv["end"] or duration):
+                        overlap_ms = (pc["end"] - fv["at"]) * 1000.0
+                        if overlap_ms >= -0.001:
+                            hard_failures.append(
+                                f"film.html 跨轨叠影穿帮风险：上轨 `{pc['id']}` 结束于 {pc['end']:.6f}s 与下轨全屏 `{fv['id']}` 起点 {fv['at']:.2f}s 重叠/浮点贴边（Δ={overlap_ms:+.2f}ms），易导致 1 帧双人头重影；请将上轨提前 >=0.034s 收口或改做显式转场"
+                            )
+
+        # 4. Check wide PiP with horizontal object-position & PiP height drift
+        pip_heights: set[int] = set()
         for m in re.finditer(
             r"<video\b[^>]*pip[^>]*style=[\"']([^\"']+)[\"']",
             html_txt,
@@ -418,13 +603,18 @@ def audit_film_dir(
             hm = re.search(r"height:\s*(\d+)px", st)
             if wm and hm:
                 w, h = int(wm.group(1)), int(hm.group(1))
-                if h > 0 and (w / h) > 1.85:
+                pip_heights.add(h)
+                if h > 0 and (w / h) > 1.85 and "wide_pip_warned" not in details:
+                    details["wide_pip_warned"] = True
                     warnings.append(
                         f"PiP 窗口 {w}x{h} (宽高比 {w/h:.2f} > 1.85) 套用 16:9 原片时横向 object-position 无效，易露出右侧大片空墙，建议内层容器 scale+translateX 居中"
                     )
-                    break
+        if len(pip_heights) >= 3:
+            warnings.append(
+                f"同一成片内 PiP 窗口出现 {len(pip_heights)} 种不同高度 ({sorted(pip_heights)}px)，易造成切镜框体抽搐跳动，建议锁定统一 PiP 基线尺寸"
+            )
 
-    # 4. Check subtitles.html for forward-loop lag bug & dangling opening/ending cues
+    # 5. Check subtitles.html for forward-loop lag bug & dangling opening/ending cues
     sub_file = film_dir / "scenes" / "subtitles.html"
     if sub_file.exists():
         sub_txt = sub_file.read_text(encoding="utf-8", errors="replace")
@@ -470,14 +660,17 @@ def audit_film_dir(
 
             if duration > 0 and (duration - last_end) < 0.35:
                 warnings.append(
-                    f"末句字幕结束于 {last_end:.2f}s，距全片结束({duration:.2f}s)仅余 {duration - last_end:.2f}s(<0.35s)，收尾偏仓促，建议留 0.4-1.0s 尾韵缓冲"
+                    f"末句字幕结束于 {last_end:.2f}s，距全片结束({duration:.2f}s)仅余 {duration - last_end:.2f}s(<0.35s)，收尾偏仓促，建议留 0.6-1.2s 尾韵缓冲"
                 )
 
-    # 5. Scan scenes/*.html & *.css for cards dropping into bottom 360px dead zone (top >= 1540px)
+    # 6. Scan scenes/*.html & *.css for bottom dead-zone traps, tiny fonts, ghost spoilers, static line-through, fake REC HUD
     scenes_dir = film_dir / "scenes"
     if scenes_dir.exists():
         bottom_traps: list[str] = []
         tiny_fonts: list[str] = []
+        ghost_files: list[str] = []
+        static_strikes: list[str] = []
+        fake_rec_files: list[str] = []
         for sf in sorted(scenes_dir.iterdir()):
             if sf.suffix.lower() not in {".html", ".css"} or sf.name == "subtitles.html":
                 continue
@@ -490,6 +683,14 @@ def audit_film_dir(
                 fs = int(m.group(1))
                 if fs < 18:
                     tiny_fonts.append(f"{sf.name}: {fs}px")
+            # Detect ghost-spoiler opacity patterns like `0.2 + 0.8 *` or `0.18 + 0.82 *` or `0.36 + 0.64 *`
+            if re.search(r"opacity\s*=\s*String\(\s*0\.[1-5]\d*\s*\+", txt):
+                ghost_files.append(sf.name)
+            if "text-decoration: line-through" in txt or "text-decoration:line-through" in txt:
+                static_strikes.append(sf.name)
+            if style_slot == "v3" and re.search(r"REC\s*[·•]|SPEAKER\s+CAM", txt):
+                fake_rec_files.append(sf.name)
+
         if bottom_traps:
             hard_failures.append(
                 f"检测到界面元素定位于底部 360px 平台遮挡死区(y>=1540px): {', '.join(bottom_traps[:6])}"
@@ -498,8 +699,20 @@ def audit_film_dir(
             warnings.append(
                 f"检测到极小字号(<18px，手机端难以辨认): {', '.join(sorted(set(tiny_fonts))[:6])}"
             )
+        if ghost_files:
+            warnings.append(
+                f"检测到未出场卡片幽灵透明度预显（opacity 0.15~0.55 提前剧透，易显 PPT 灰脏感）: {', '.join(ghost_files[:6])}，建议改用 0->1 弹性入场（见 references/editing-vfx.md）"
+            )
+        if static_strikes:
+            warnings.append(
+                f"检测到静态 CSS `text-decoration: line-through`（{', '.join(static_strikes[:4])}），建议改用 SVG stroke-dashoffset 动态笔触划除"
+            )
+        if fake_rec_files:
+            warnings.append(
+                f"电影沉浸槽位(v3)检测到伪监视器套壳 HUD（REC/SPEAKER CAM: {', '.join(fake_rec_files[:4])}），建议移除并改用动态宽银幕遮幅与光学景深"
+            )
 
-    return details
+    return details, cut_points
 
 
 def audit_publish_json(
@@ -600,13 +813,20 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
             f"片尾最后 0.35s 音频未自然落音/淡出（mean={tail_mean} dB, max={tail_max} dB），疑似半句硬截断或切入下句起音"
         )
 
+    film_dir = Path(args.film_dir) if args.film_dir else None
+    style_slot = detect_style_slot(video, film_dir, args.style)
+    film_checks: dict[str, Any] = {}
+    cut_points: list[float] = []
+    if film_dir:
+        film_checks, cut_points = audit_film_dir(
+            film_dir, duration, style_slot, hard_failures, warnings
+        )
+
     overlays: dict[str, Any] = {}
     if args.out_dir:
-        overlays = render_safezone_overlays(video, duration, Path(args.out_dir))
-
-    film_checks: dict[str, Any] = {}
-    if args.film_dir:
-        film_checks = audit_film_dir(Path(args.film_dir), duration, hard_failures, warnings)
+        overlays = render_safezone_overlays(
+            video, duration, Path(args.out_dir), cut_points=cut_points
+        )
 
     pub_checks: dict[str, Any] = {}
     if args.publish_json:
@@ -614,6 +834,7 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
 
     report = {
         "video": rel_path(video),
+        "style_slot": style_slot,
         "duration_sec": round(duration, 3),
         "size_bytes": size_bytes,
         "resolution": (
@@ -655,14 +876,20 @@ def main() -> int:
 
     p_render = sub.add_parser(
         "audit-render",
-        help="Run acoustic, safe-zone overlay, film HTML/subtitle, and publish.json QC.",
+        help="Run acoustic, safe-zone overlay, cut-point, editing/VFX, and publish.json QC.",
     )
     p_render.add_argument("--video", required=True, help="Rendered MP4 path")
     p_render.add_argument("--film-dir", help="OpenFilm project film/ directory")
     p_render.add_argument("--publish-json", help="publish/publish.json path")
     p_render.add_argument(
+        "--style",
+        choices=["auto", "master", "v1", "v2", "v3", "default"],
+        default="auto",
+        help="Style slot for ASL and VFX craft thresholds (default: auto-detect from path)",
+    )
+    p_render.add_argument(
         "--out-dir",
-        help="Output directory for safezone-grid.png, safezone-tail.png, and qc-report.json",
+        help="Output directory for safezone-grid.png, safezone-tail.png, safezone-cuts.png, and qc-report.json",
     )
     p_render.add_argument(
         "--no-fail",
