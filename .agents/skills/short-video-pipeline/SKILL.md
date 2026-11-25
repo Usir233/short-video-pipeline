@@ -255,20 +255,29 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 - 每条命令都在目标 `film/` 里执行（单片为 `runs/<目录>/film/`，入口 E 为 `master/film/` 或 `variants/vN-<风格>/film/`），先在根目录或按对应层级 source `env.sh`，直接调用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`，避免硬写 `../../../` 在入口 E 深层目录失效）。
 - 项目就建在运行目录的 `film/`（入口 E 建在各自 `master/film/` 或 `variants/vN-<风格>/film/`），不用 OpenFilm 默认的项目位置。
-- 画面 1080×1920；**竖屏平台安全区**：顶部留 ≥160px（避开状态栏/搜索栏），底部留 ≥360px（避开抖音/小红书/视频号底栏文案），主视觉和标题控制在 2 行以内，不遮挡、不折出第 3 行。
+- 画面 1080×1920；**竖屏三平台四向安全区（硬红线）**：顶部留 `≥180px`（避开状态栏/灵动岛/顶部导航）、底部留 `≥360px`（`y ≤ 1560px`，严禁任何底卡、落款或字幕掉入 `y > 1560px` 遮挡死区）、**右侧留 `≥150px`（`x = 930..1080, y = 850..1500` 为点赞/评论/收藏按钮禁区，中下半屏卡片的可读文字、勾选框、徽章与出处必须稳控在 `x ≤ 920px`）**；主视觉和标题控制在 2 行以内，单行字幕严控 `≤14–15` 汉字，不遮挡、不折出第 3 行。
+- **人脸构图、PiP 分屏与防 PPT 感约定**：
+  - 全屏 16:9 裁 9:16 口播叠加底部浮卡时，必须通过上提构图（如 `scale(1.08–1.10) translateY(-5%)`）让人物下巴稳在 `y ≤ 1120px` 以上，浮卡置于下巴以下且 `y ≤ 1540px`，**严禁卡片切嘴或糊住下巴**；
+  - 宽幅 PiP 框（宽高比 `>1.85`）内直接对 16:9 原片设横向 `object-position` 无效，须用内层容器 `scale + translateX` 将人物居中并压暗无关空墙，避免右侧露大片死墙；
+  - 严禁对未出场信息卡使用 `opacity: 0.18–0.40` 灰暗幽灵预显（未讲到前保持 `opacity: 0` 或极简空槽，命中瞬间干脆入场）；卡片正文最小字号 `≥24px`，禁止 `overflow: hidden` 容器内容溢底裁切；尽量用动态实拍 B-roll 或交互式代码动效替代呆板静图。
 - 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
 - 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
-- 短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾（MP3 编码填充易导致 WebAudio 解码时长略短于 `ffprobe` 而报错），转场音效与点缀音效分放不同 `<section>` 防重叠；按 `openfilm look` 的响度提示清理过轻或未使用的音频。
+- **无延迟标准字幕写法**：`subtitles.html` 禁止在正序 `for` 循环中用 `t <= c[1] + 0.12/0.14` 直接 `break`（相邻紧密台词会被前句拖尾卡住 3–4 帧并吞掉入场动画）；统一按 `Math.min(c[1] + 0.12, nextStart - 0.001)` 截断尾延或逆序匹配，并确保跨镜切点字幕不串台。
+- **音频先测再配（严禁盲填 `volume`）**：BGM 与 SFX 写入 `film.html` 之前，先执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" probe-audio <assets目录>` 实测每条素材原生 `LUFS / True Peak / LRA / 前6秒均值 / 峰点偏移`，再据此反算 `volume` 与入点：
+  - 慢热高动态 BGM（前 6 秒比全曲低 `≥10 dB` 或 `LRA > 12 LU`）禁止直接从 `#t=0` 铺底，须从起势段切入或轻压缩；多段 BGM 拼接须对齐 BPM 小节线并配 `1.5–2.0s` 交叉淡化，**严禁零 `fade` 硬切**；
+  - 峰值极热/削波音效（如 `-7 LUFS`）须大幅压低（如 `0.06–0.08`），避免气口刺耳；短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾，转场 whoosh 优先选有效长 `≤0.45s` 防拖尾压字，不同类型音效分放不同 `<section>` 防重叠，点缀 SFX 密度控制在 **`≤ 1 次/5s`**；长片（`>60s`）母带动态保持 `LRA ≥ 4.0 LU` 避免过度砖墙限幅疲劳。
+- **首尾气口与完整收尾硬约定（杜绝残句开篇、半句截断与无结尾感）**：独立成片与切片首句前 `0.8s` 内严禁残留无前文废语（「像我刚刚讲的」「反而是」「那这个」等）；末句必须落在**完整语义句号/明确结论点**上（严禁截断在转折词/引子/破折号半句上或切入下句起音，末句人声加 `30–50ms` 微淡出）；末段须具备清晰视觉收尾落版（最后核心信息停留可读 `≥1.5s`），并在末句落音后留约 `0.6–1.2s` 视觉余韵配合 BGM 自然淡出（片尾最后 `0.35s` 不得存在 `> -25 LUFS` 的未落音截断人声）。
 - 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
 - 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`）。每次都带 `--out`，不用默认的导出位置。
 
 出片前自检，全部通过才能进入发布：
 
 - 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
+- **自动化声画与安全区红框门禁（必跑）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、末尾 `0.35s` 无截断人声、BGM 无零淡化硬切、字幕无延迟 Bug、末句无悬空半句、无底卡掉入 `y≥1540px`）；**并亲自打开带三平台安全区红框的 `output/check/safezone-grid.png` 与 `output/check/safezone-tail.png` 目检**，逐项确认：右侧按钮禁区（橙框 `x=930..1080, y=850..1500`）无压字/无遮徽章、底部红区（`y>1560`）与顶部红区（`y<180`）干净、全屏浮卡未切嘴挡下巴、卡片容器无 `overflow: hidden` 切底溢出、结尾收束停留与 BGM 淡出自然。
 - 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
-自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`ffprobe` 的输出存成 `ffprobe.json`，每项检查的结论写进 `check.json`。
+自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`qc_video.py` 产出的 `safezone-grid.png`、`safezone-tail.png`、`qc-report.json` 与 `ffprobe` 输出 `ffprobe.json` 一并保留，每项检查的结论写进 `check.json`。
 
 不合格就修到合格。修不好就停下报告，不发布。
 
@@ -278,7 +287,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ### 6.1 撰写三平台文案（默认全部视频必做）
 
-- **先读 [references/copywriting.md](references/copywriting.md)**，结合成片第一句话、最有说服力的例子和最后落点，先提炼一句核心问题与支撑观点，再为每个目标平台产出四项文案（封面标题、视频描述、视频标签三层候选 + 单行空格分隔发布组合、短标题）。
+- **先读 [references/copywriting.md](references/copywriting.md)**，结合成片第一句话、最有说服力的例子和最后落点，先提炼一句核心问题与支撑观点，再为每个目标平台产出四项文案（封面标题、视频描述、视频标签三层候选 + 单行空格分隔发布组合、短标题）。**视频描述中严禁提及任何具体秒数、时间点或片长数字**（如「第24秒」「36秒起」「1分35秒」「最后30秒」「这支48秒短片」等），一律改用自然的内容环节指代。
 - 属于辰奕系列账号（如「老郑AI经营实战」，除非用户显式附加「不带品牌口号」或切换至非辰奕号组）时，在三平台描述中完整融入原句 **「用AI重构经营，让企业持续增长」**，并按规范合理配置 `#辰奕`、`#用AI重构经营`、`#让企业持续增长`。
 - 按 `copywriting.md` 的字段映射表落盘至 `publish/publish.json`（保留 `cover_title`、`short_title`、`tag_candidates`、`topics_display`、`title`、`desc`、`topics`）；视频号 `title` 强制对应无空格、无禁用符号的短标题。
 
@@ -294,7 +303,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ### 6.3 发布前强制审核门禁
 
-> **强制门禁**：无论是交付用户手动发布，还是调用 CreatorHub 的 `POST /api/publish` 建任务，**都必须先按 [references/publish-audit.md](references/publish-audit.md) 完成逐平台发布前审核**（涵盖媒体规格、文本洁净度、文案规范与品牌一致性、封面规格与视觉 8 项自检、话题总长、合规、账号状态与 `account_role != "crawler"` 以及分平台表单硬校验），并将结论写入 `publish/publish.json` 的 `audit` 字段。可无损自动修正的格式问题（如视频号短标题去空格）须修正并复审通过；存在未通过的硬阻断项时**严禁建任务或放行交付**。
+> **强制门禁**：无论是交付用户手动发布，还是调用 CreatorHub 的 `POST /api/publish` 建任务，**都必须先按 [references/publish-audit.md](references/publish-audit.md) 完成逐平台发布前审核**（先以 `qc_video.py audit-render --video <成片> --film-dir <film/> --publish-json <publish.json> --out-dir <output/check>` 过一遍自动化硬校验，再核验媒体规格与安全区红框图、文本洁净度、文案规范去秒数与品牌一致性、封面规格与视觉 8 项自检、话题总长、合规、账号状态与 `account_role != "crawler"` 以及分平台表单硬校验），并将结论写入 `publish/publish.json` 的 `audit` 字段。可无损自动修正的格式问题（如视频号短标题去空格、描述去秒数）须修正并复审通过；存在未通过的硬阻断项时**严禁建任务或放行交付**。
 
 ### 6.4 交付手动发布或 CreatorHub 自动发布
 

@@ -39,7 +39,7 @@
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
-| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境与寻源脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`） |
+| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考文件（`references/`）、环境/寻源与出片质检脚本（`scripts/env.sh`、`fetch_trends.py`、`fetch_asset.py`、`qc_video.py`） |
 | `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png` 与按系列分类的视觉参考样图 `samples/`；单期/专题标题图属非通用资产，放各自运行目录不入 git） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
