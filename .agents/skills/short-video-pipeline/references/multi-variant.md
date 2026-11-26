@@ -132,11 +132,12 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - **工作区外原片**：若用户提供了工作区外的本机文件路径，**只读复制**进 `raw/`（**严禁 `mv` 移动或删除用户本机源文件**）；若是下载链接，则用工作区工具下载进 `raw/`；
    - 用户附带的配套素材只读复制或登记进 `raw/supplied/`；
    - 用 `ffprobe` 检查原片分辨率、帧率、时长、编码与音轨状态，写入 `raw/input.json`。
-4. **原片 BGM / 底噪体检与人声分轨预案（防换风格叠音打架）**：
+4. **原片 BGM / 底噪体检、人声分轨与广播级人声前置母带（防叠音与砖墙削波）**：
    - 无论输入「已处理」还是「未处理」，均检查原片音轨是否自带背景音乐（BGM）或明显环境底噪（已处理口播片常混有原 BGM）；
-   - 若原片**自带 BGM 或需精准口播时间轴**：执行 `"$SVP_ROOT/rea-video/.venv/bin/rea-video"` 拆解至 `raw/rea-out/`，提取完整口播逐字稿与干净人声轨 `stems/vocals.wav`；在确立母素材时同步裁切对齐后的干净人声轨放入 `master-assets/clips/<切片名>-vocals.wav`（或混出无 BGM 的干净口播切片），并在 `master-assets/manifest.json` 记 `has_original_bgm: true` 与 `vocals_track`。下游母片与 3 条子片一律以干净人声轨为底再铺各自风格 BGM，彻底杜绝双 BGM 叠音打架！
-5. **判定「已处理 / 未处理」**：
-   - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1：若源片 `>1440p` 或关键帧间隔 `>0.5s`，直接用显卡一次性转出 `1440p + -g 8` 快解母片（`ffmpeg -hwaccel cuda -i <源片> -vf "scale=-2:1440" -c:v h264_nvenc -preset p5 -cq 18 -g 8 -c:a copy`）放入 `master-assets/clips/`；否则按零重复拷贝原则（同卷硬链接/`cp -c`）归档原片切片（及可选 `*-vocals.wav`）与规范化重命名后的配套素材进 `master-assets/` 并写 `manifest.json`；
+   - 执行 `"$SVP_REA_VIDEO"` 拆解至 `raw/rea-out/`，提取完整口播逐字稿与精确时间戳（若原片自带 BGM 同步保留干净人声轨 `stems/vocals.wav`）；
+   - **广播级人声前置润色必做（`prepare-voice`）**：确立母素材时，对每个确认切片（或 `*-vocals.wav`）运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a`，产出**与源片等长零时间偏移**的压缩润色人声母带，记入 `master-assets/manifest.json` 的 `vocals_treated_track`（若原片带 BGM 同时记 `has_original_bgm: true`）。下游母片与 3 条子片的 `<section id="voice-track">` 一律引用该 `*-voice-treated.m4a`（画面 `<video>` 设 `volume="0"`），彻底杜绝双 BGM 叠音与渲染时 `-14 LUFS` 砖墙削波！
+5. **判定「已处理 / 未处理」（注意：跳过粗剪闸门 ≠ 跳过成片内 EDL 精剪与黄金冷开！）**：
+   - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1 人工闸门：若源片 `>1440p` 或关键帧间隔 `>0.5s`，用显卡一次性转出 `1440p + -g 8` 快解母片放入 `master-assets/clips/`，否则按零重复拷贝原则归档原片切片、生成 `*-voice-treated.m4a` 并写 `manifest.json`。**关键红线：`master-assets/clips/` 保持完整不剪碎是为了统一时间码基准，但下游 `00-master` 与 `v1..v3` 各自制作时，仍必须在各自 `storyboard.json` 中用 `time_slices` 切净片头采访者搭话、推眼镜冷场与口头禅，并设计 `H1–H6` 黄金 3 秒冷开，严禁把前 7 秒冷场原封不动端进成片！**；
    - 用户明确说了「未处理 / 原片 / 先粗剪」，或输入位于工作区 `素材投递区/未处理原片/` 下且用户未声明已处理 → `gates.input_state_confirmed = true`，进入步骤 E1；
    - 用户未明确说明处理状态且输入不在 `素材投递区/已粗剪/` 或 `素材投递区/未处理原片/` 中 → Agent 先结合 `ffprobe` 与轻量试听/静音检测初步判断，将 `run.json` 置 `status: "waiting_approval"`、`gates.pending_gate: "gate_0_input_state"`，**停下用一句话向用户确认是已处理还是未处理**，绝不擅自跳过粗剪。
 
@@ -167,21 +168,21 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ### 步骤 E2：基于母素材制作完整母片（`master/`）
 
-1. **母片默认视觉配色与剪辑基调（通用默认，用户指定其他号组/色系时覆盖）**：
-   - **视觉色板（墨黑铜青 · 商业旗舰叙事）**：字体统一 `Noto Sans SC`（500 / 700 / 900）；底色深墨 `#0D1920` / `#15262F`、主字暖象牙 `#FFF8E6`、次字灰青 `#93AAB2`、主强调铜青 `#2FB8A8` / `#8BE3D6`、对比暖铜 `#D08346` / `#F59642`、重点金标 `#FFC21A`（与深墨铜青系封面自然统一）。
-   - **剪辑与视听规则**：完整保留原片/母素材的核心叙事顺序，严格遵照 [editing-vfx.md](editing-vfx.md) 的剪辑节奏与 OpenFilm 特效工艺（长母片 ASL `≤6.5s`、固定 PiP 连续滞留 `≤25s`、单镜零变化空窗 `≤3.5s`、全屏 B-roll/图形夺权 `≥15%`，**纯文字圆角卡占比 `≤25%`、语义级 SVG/Canvas 动效占比 `≥45%`、静态 B-roll 必叠 SVG 矢量前景动效层、单支视频内视觉素材严格单次使用 `count = 1`**，按「全屏 4K 竖版口播（锁眼推镜/跳切）↔ 全屏运动 B-roll/语义 SVG 信息图或人后巨字 `--of-cutout: 1`（单段控 `≤4.2s`）↔ 顶部圆角口播分屏（`clip-path` 形变转场）+ 下半动态图解」交替推进，跨轨切点防浮点叠影、声画成对转场、零幽灵剧透、SVG/Canvas 名实相符 VFX）；同时严格执行 [../SKILL.md](../SKILL.md) 步骤 5 的**四向安全区（顶 ≥180px、底 ≥360px 即 `y≤1560px`、右侧互动按钮禁区 `x=930..1080, y=850..1500`，中下半屏可读元素右界 `x≤920px`）**、全屏构图上提防浮卡挡嘴（下巴 `y≤1120px`）、PiP 内层居中去空墙、无延迟标准字幕写法与音频先测后配（`qc_video.py probe-audio` 反算 `volume`，多段 BGM 对齐小节线并配 `1.5–2.0s` 交叉淡化，点缀 SFX `≤1次/5s`）。
-   - **完整收尾硬规则（母片与 3 条子片均必守）**：每条成片必须有明确的完片收束感，同时满足三项：① **口播语义闭环**（末句须是完整陈述或明确结论句，自然落音加 `30–50ms` 微淡出不吞字、不切入下句起音，严禁截断在转折词/引子词/破折号半句上）；② **视觉收尾落版**（末段须给出清晰的收束视觉，如切回全屏口播收束、总结金句卡或品牌简洁落款，稳落 `y≤1540px` 且不挡嘴，最后一张核心收尾卡完整停留可读 ≥ 1.5 秒）；③ **听觉与尾韵缓冲**（末句说完后留约 `0.6–1.2s` 的轻收尾画面余韵与 BGM 自然淡出，片尾最后 `0.35s` 不得存在 `> -25 LUFS` 的未落音截断人声）。
+1. **母片默认剪辑风格与视觉基调（默认对应 [editing-styles.md](editing-styles.md) `S01` 商业旗舰深度叙事，用户指定时可换 `S01–S10`）**：
+   - **视觉色板与调色 LUT（墨黑铜青 · `master-editorial.cube`）**：主标题配 `Noto Serif SC` + `Noto Sans SC`，底色深墨 `#0D1920` / `#15262F`、主字暖象牙 `#FFF8E6`、次字灰青 `#93AAB2`、主强调铜青 `#2FB8A8` / `#8BE3D6`、对比暖铜 `#D08346`、重点金标 `#FFC21A`；拷入 `.agents/skills/short-video-pipeline/assets/luts/master-editorial.cube` 至 `master/film/looks/`，所有出镜 `<video>` 挂 `--of-lut: url(looks/master-editorial.cube)` 与自然护镜美颜。
+   - **精剪、去框化 Boxless 特效与两段式混音**：对照 [editing-styles.md](editing-styles.md) 与 [editing-vfx.md](editing-vfx.md)，先做 `D1–D5` 精剪与 `H1–H6` 黄金 3 秒冷开（切净开头搭话冷场，非连续切点必用 `JL3` B-roll 覆盖或 `TR1–TR6` 转场遮切，严禁句中假跳切）；严守 **Boxless 去框化四定律**（禁仪表盘套娃外框、禁无数字伪进度条、禁空黑框等字、禁字幕复读横幅、禁固定高 `space-between` 漏块塌陷、禁廉价 Emoji 贴纸）；`--of-cutout: 1` 必垫同源虚化视频底且 `width ≥ 1080px`（`span_v > 0.42` 大头原片禁做 `PF4` 人后字）；字幕采用 **`SUB1` 杂志双字重无框排印字幕**（`44px`，**严禁 `.pill` 半透明胶囊框**）；配乐音效经 `normalize-sfx` 与 `build-bgm-bed`（含 1–2 处金句 `Silence Drop` 抽空留白）混出 `bgm-bed.m4a`，确保 `-14 LUFS`、`LRA ≥ 4.0 LU`。
+   - **完整收尾硬规则（母片与 3 条子片均必守）**：① **口播语义闭环**（末句须是完整定论句，加 `30–50ms` 微淡出，严禁截断在转折/引子半句上）；② **视觉收尾落版**（`O1–O4` 稳落 `y≤1540px` 且停留可读 ≥ 1.5 秒）；③ **听觉与尾韵缓冲**（末句后留 `0.6–1.2s` 尾韵配合 BGM 自然淡出，片尾最后 `0.35s` 禁 `> -25 LUFS` 截断人声）。
 2. **脚本分镜与补素材**：
-   - 基于 `master-assets/manifest.json` 提炼母片的一句话核心问题与支撑观点，先测定源片人脸归一化坐标 `speaker_framing` 并锁定 `subtitles.html` 精确时间戳，再编写 `master/script/storyboard.json`——**开工建 `film.html` 前必须逐镜写明 `cue_sync_map`（本镜每句 `cue_start` → 精确局部秒数 `local_t = cue_start - clip_at` → 提炼自原话的 `2–7` 字屏显关键词 → 渐进 SVG/Canvas 动画）**，严禁 `t=0` 满屏静态摊牌、拍脑袋等差秒数、跨镜借词或编造非口播长词；
-   - 在用户配套素材之外，按 [sourcing.md](sourcing.md) 的 5 类通道自主补充母片所需素材（OpenFilm 复用库/CC0 + 离线动态贴纸 `openfilm get sticker`、语义 SVG/Canvas 动画、官方无水印图/≤6s 切片、1–2 段免版权运动实拍视频 B-roll、叠 SVG 前景动效的 9:16 氛围图；**严守单支成片内每份视觉素材仅用 1 次**），原件入 `master/materials/`，实采素材入 `master/film/assets/` 并登记 `credits.json`（调用 `fetch_asset.py` 时明确指定 `--out runs/<目录>/master/materials --assets runs/<目录>/master/film/assets`）；音频入 `film.html` 前先执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" probe-audio runs/<目录>/master/film/assets` 标定 `volume` 与入点。
-3. **母片剪辑特效与出片自检**：
-   - 先在根目录 source `env.sh` 再 `cd runs/<目录>/master/film`（或在 `master/film/` 执行 `. ../../../../.agents/skills/short-video-pipeline/scripts/env.sh`），按上述母片视觉基调与 OpenFilm 规范完成精剪、特效、动画、字幕、花字与配乐包装（`1080×1920` 四向安全区、**`speaker-pip` 纵向保留 `v2≥74%` 严禁切嘴/切下巴且居中紧凑窗去右侧杂墙、分镜全部按 `local_t` 声到字出渐进揭示**、`OPENFILM_NO_BROWSER=1`；若 `manifest.json` 标有 `vocals_track` 则用干净人声轨配新 BGM 防叠音）；
-   - 渲染命令：`OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/00-master-<话题短名>.mp4`（成片实测须接近 `-14 LUFS`、真峰值 `≤ -1.0 dBTP`、长片 `LRA ≥ 4.0 LU`；母片单条独立渲染默认开 `--workers 6` 吃满多核与多路 `h264_nvenc`，`--of-cutout: 1` 仅在人后大字/浅景深高潮镜按需开启且单段控 `≤4.2s`，仅无独显或 `<16GB` 内存机器降回 `--workers 2`）；
-   - 逐镜 `openfilm look` 看图 + 全片 `openfilm look --full` & `ffprobe` + 必跑 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/00-master-<话题短名>.mp4 --film-dir . --out-dir ../output/check`，**亲自打开 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、画中画 1:1 特写图 `safezone-pip.png`（如有 PiP）及抠像/贴纸专检图 `safezone-cutouts.png`（如有）目检安全区、`speaker-pip` 头眼鼻嘴下巴完整无截断且无灰墙穿帮、音画同步无静态抢跑、人后特效零遮挡、贴纸不压头脸与切点无穿帮**，确认零 `hard_failures` 后记录写入 `master/output/check/`。
-4. **母片目标平台文案 + 封面 + 单条审核**：
-   - 按 [copywriting.md](copywriting.md) 写出母片所有目标平台的四项文案、三层标签候选与空格版发布组合，落盘 `master/publish/publish.json`；
-   - 若 `covers_enabled` 为 `true`：按对应系列规范制作母片目标平台封面（若当期属于「意图电商」系列则严格按 [cover-design.md](cover-design.md) 出图；否则按当期母片墨黑铜青视觉风格独立设计对应尺寸 `1080×1920` / `1080×1440` 封面；**人物抽帧优先从 `master-assets/clips/` 干净源片抽取**，避开母片花字/字幕遮挡抠像），落盘 `master/covers/00-master-<平台>.png` 与 `cover-spec.json`，并亲自看图逐项核对；
-   - 按 [publish-audit.md](publish-audit.md) 完成母片单条全目标平台审核并写回 `master/publish/publish.json` 的 `audit`。
+   - 基于 `master-assets/manifest.json` 判定 `content_archetype`、测定 `speaker_framing`（含 `span_v`）并锁定 `subtitles.html`，编写 `master/script/storyboard.json`（含 `editing_style`、`color_lut`、`cold_open`、`time_slices`、`silence_drops` 及零复读 `cue_sync_map`：单锚点词 `≤5` 字且与底部字幕重合 `<50%`）；
+   - 按 [sourcing.md](sourcing.md) 自主补充运动实拍视频 B-roll 与真实界面/无框动效素材（**入库前必过 B-roll 首中尾帧 `YAVG≥18`、无内部硬切 `scdet<16`、地标语义吻合与 `64-bit dHash` 唯一性四项硬检**），短音效跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx runs/<目录>/master/film/assets` 峰值归一化。
+3. **母片剪辑特效、自动闪避床构建与出片自检**：
+   - 写好 `film.html` 人声轨（引用 `*-voice-treated.m4a`）后，渲染前先跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" build-bgm-bed --film-dir . --bgm assets/<bgm> --out assets/bgm-bed.m4a --drops "<t1:t2>"`；
+   - 渲染命令：`OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/00-master-<话题短名>.mp4`；
+   - 逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/00-master-<话题短名>.mp4 --film-dir . --out-dir ../output/check`，**亲自打开 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`safezone-broll.png`、`safezone-pip.png`（如有）及 `safezone-cutouts.png`（如有）目检**，零 `hard_failures` 后记录写入 `master/output/check/`。
+4. **母片目标平台诚实文案 + 双轨封面 + 单条审核**：
+   - 按 [copywriting.md](copywriting.md) 依 `content_archetype` 诚实钩子契约写出母片三平台四项文案（禁伪造不存在的清单/破局方案，禁生造歧义缩略词），落盘 `master/publish/publish.json`；
+   - 若 `covers_enabled` 为 `true`：按 [cover-design.md](cover-design.md) 出图（「意图电商」系列走 Track A；其他主题走 **Track B `C1` 深墨左切光杂志人物拓扑**：先生成 16–24 帧 `materials/covers/contact-sheet.jpg` 五维选帧，主标题 `≥104px`/`≥100px`，零小胶囊标签堆砌），落盘 `master/covers/00-master-<平台>.png` 与 `cover-spec.json`；
+   - 按 [publish-audit.md](publish-audit.md) 完成母片单条全目标平台审核（含 `--publish-json` 复跑 `audit-render`）并写回 `audit`。
 
 ### 步骤 E3：基于当期母片与既有规范 → 延伸规划 3 条子片（+ 闸门 2）
 
@@ -191,22 +192,21 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 用户启动时如显式指定「拆三条」或「同内容三风格」，则优先遵照指令；
    - **开篇独立性护栏（严禁残句冷开）**：拆出的每条子片首句前 `0.8s` 内**严禁残留依赖前文的废语或悬空指代**（如「像我刚刚讲的」「反而是」「所以说」「那这个」）；若原段首句缺独立钩子，须精确后移起点裁净废语，或前置 `2–3s` 结论金句冷开，并在 `master-plan.json` 写明 `opening_hook`；
    - **切点语义与声学闭环硬规（严禁无结尾半句截断或切入下句起音）**：规划每条子片（尤其是倒叙或分段切出的切片）的 `time_slices` 尾点时，**必须对照 `aligned_transcript` 逐字确认末段最后一句是完整句意与明确结论落点，严禁把切点卡在转折词、铺垫引子或未说完的破折号半句上**（例如「但是这个意图电商——」「比如……」「接下来我们看……」），并核对尾点不切入下一句起音（末句语音加 `30–50ms` 微淡出）。若某段自然尾点刚好是引子句而非结论句，须采用以下任一方式收口：① 将尾点前收至上一句完整定论，或向后延伸至该观点完整说完（为保证每条子片独立成篇且收尾完整，允许相邻子片在边界处保留 1 句极短核心结论重叠，**独立完片感高于机械零重叠**）；② 末段显式拼入一句回扣核心定论的完整口播句并配独立收尾落版（`outro`）。每条子片均须在 `master-plan.json` 中显式写出 `opening_hook`（开篇首句与钩子设计）、`ending_sentence`（收尾完整末句原文）与 `outro_design`（收尾画面、停留时长与 BGM 淡出方式），供规划审查。
-2. **四槽位底层互斥剪辑范式与默认配色（严禁“同一布局模板换 4 套颜色”！）**：
-   - **灰度盲测反克隆铁律**：将 `00-master`、`01-v1`、`02-v2`、`03-v3` 全部去色转为黑白灰后，任意 3 秒内必须能仅凭**画幅架构、人物出镜形态、字幕排版体制、剪辑蒙太奇语法**一眼区分出 4 种截然不同的视频类型！**严禁跨片复制同一套 CSS 坐标骨架（严禁 4 片共用 `top≈1428px` 半透明胶囊字幕、严禁多片共用同一顶部大矩形 `speaker-pip` + 下半屏 `852px` 方盒、严禁多片共用左上角 `ENGLISH // 中文` 顶标 + `top≈1160px` 底部横盒）！**
-   - **四槽位强制互斥剪辑架构（写入 `master-plan.json` 的 `layout_paradigm` / `speaker_mode` / `subtitle_system`）**：
-     - **`00-master`（母片 · 商业旗舰深度叙事流 · 墨黑铜青 `#0D1920` / `#2FB8A8` / `#FFC21A`）**：
-       - **剪辑与人物**：三幕章节推进，全屏锁眼缓推口播（`60%`）↔ 紧凑 `4:3`/`16:10` 圆角人像窗（净宽 `460–540px`，`v2≥75%`）配时间轴/因果拓扑沙盘；
-       - **字幕体制**：居中沉稳杂志半透明底托条（`y ≈ 1420–1460px`）。
-     - **`v1`（子片 1 · 抖音网感快剪冲击流 · 深蓝黑 `#060B14` + 电光青 `#00E5FF` + 珊瑚橙 `#FF6B35`）**：
-       - **剪辑与人物（禁用顶部矩形讲座 PiP！）**：全程全屏高频 4K 景别硬跳切（中景→近景→特写连跳，ASL `≤3.2s`）+ 说话人身旁/前景直接砸出撞色标牌/动态计数器/手机刷屏卡片飞入 + 全屏快切运动 B-roll + 5 帧 RGB 故障/甩切转场；
-       - **字幕体制（禁用半透明胶囊底框！）**：无底框粗黑体描边撞色动态蹦字（白字重黑边 + 关键词放大 `1.25×` 亮色上跳回弹，`y ≈ 1320–1390px`）。
-     - **`v2`（子片 2 · 全画幅动态白板图解流 · 暖纸白 `#F6F7F4` + 深靛蓝 `#14212B` + 翡翠青 `#0F766E` + 陶橙 `#C2410C`）**：
-       - **剪辑与人物（禁用 `width > 320px` 半屏矩形 PiP！）**：将整块 `1080×1920` 竖屏释放为一张完整可平移聚焦（Camera Pan & Zoom）的动态研究画板（`80%+` 时长全画幅图解主导），说话人仅在首尾 3s 全屏出镜，中段退居幕后画外音或缩为角落 `≤240px` 圆形声波讲者徽章；配手绘笔触连线、双笔划除与逐项打勾翻页；
-       - **字幕体制**：亮底极简无框印刷黑体 + 当前关键词底部荧光笔实时划过底纹（`y ≈ 1450–1500px`）。
-     - **`v3`（子片 3 · 宽银幕电影独白留白流 · 黑曜石 `#0A0A0C` + 暖象牙金 `#F2E5C6` + 陶红 `#D97757` + 薄荷 `#5EEAD4`）**：
-       - **剪辑与人物（禁用一切圆角信息盒、SVG 多框图表/柱状图、`//` 科技胶囊与贴纸！）**：`--of-cutout: 1` 浅景深光学人物特写 + `2.39:1` 宽银幕遮幅或三联画胶片并置（上/下格夜景空镜与中格人物眼神同屏呼吸）+ 纯留白无框光学去焦显影金句 + 慢速叠化/黑场留白；
-       - **字幕体制**：无任何底框！电影院级细字距暖白纯字（配柔和暗影，`y ≈ 1470–1515px`），终帧真溶黑 `#000000`。
-   - 将 3 条子片的切分点/视角、互斥剪辑架构（`layout_paradigm` / `speaker_mode` / `subtitle_system`）、色板定义、独立补素材清单、封面规范分配与品牌主张配置完整写入 `master/script/master-plan.json`（所有路径一律相对工作区根目录）。
+2. **四槽位正交剪辑范式、独立调色 LUT、零胶囊字幕与封面拓扑（严禁“同一布局换 4 套颜色”！）**：
+   - **灰度盲测反克隆铁律**：将 `00-master`、`01-v1`、`02-v2`、`03-v3` 全部去色转为黑白灰后，任意 3 秒内必须能仅凭**画幅架构、人物出镜形态、零胶囊字幕排版体制、剪辑蒙太奇语法**一眼区分出 4 种截然不同的视频类型！完整风格库与选型矩阵见 [editing-styles.md](editing-styles.md)（可按题材从 `S01–S10` 选 4 套正交风格；商业访谈默认推荐 **`S01 + S02 + S03 + S04`**）：
+     - **`00-master`（默认 `S01` 商业旗舰深度叙事 · `master-editorial.cube` · 封面 `C1` 深墨左切光杂志风）**：
+       - **剪辑与人物**：`H1/H2` 冷开 + 三幕章节推进，全屏锁眼缓推口播（`55%`）↔ 紧凑 `4:3`/`16:10` 无外框人像分屏（`L3`，`v2≥75%`）+ 无框排版锚点与 `DV` 数据动效；
+       - **字幕体制（`SUB1`）**：**严禁 `.pill` 半透明胶囊底盒！**采用无框衬线+无衬线双字重杂志字幕（`44px`，`y ≈ 1410px`）。
+     - **`v1`（默认 `S02` 高冲网感快剪冲击流 · `v1-crisp-contrast.cube` · 封面 `C2` 高对比双截杂志风）**：
+       - **剪辑与人物（禁用顶部矩形讲座 PiP！）**：`H1` 前置最狠暴论冷开 + 全屏句界阶梯跳切（严禁句中假跳切！非连续删句切点用 `JL3` B-roll 遮切，ASL `2.0–3.2s`）+ `KT1/KT2` 巨字重锤砸屏 / `PF6` 3D 视窗 + `TR2/TR5` 甩切/RGB 冲击转场，前 3 秒必配重音冲击音效；
+       - **字幕体制（`SUB2`）**：无底框重黑体硬投影动态蹦字（`54px`，关键词 `1.22×` 弹性跳动，`y ≈ 1300px`）。
+     - **`v2`（默认 `S03` 全画幅动态白板图解流 · `v2-warm-paper.cube` · 封面 `C3` 暖白报纸社论胶片框风）**：
+       - **剪辑与人物（禁用 `width > 320px` 半屏矩形 PiP 与一切霓虹/故障！）**：`H3` 手写划除痛点冷开 + 整块 `1080×1920` 释放为可平移推拉（`C7` Camera Pan & Zoom）的无框纸面研究画布（`75%+` 图解主导，说话人仅首尾出镜或角落 `≤240px` 圆形讲者徽章 `L5`），配 `KT4` 手绘红笔划错与纸张翻页拟音；
+       - **字幕体制（`SUB3`）**：亮底深墨衬线无框印刷字幕 + 关键词底部暖黄荧光笔实时手绘扫过（`42px`，`y ≈ 1455px`）。
+     - **`v3`（默认 `S04` 宽银幕电影独白留白流 · `v3-obsidian-film.cube` · 封面 `C4` 黑曜石宽银幕剧照风）**：
+       - **剪辑与人物（禁用一切圆角信息盒、SVG 图表、`//` 科技胶囊、贴纸与轻快/气泡音效！）**：`H5` 黑场呼吸冷开 + 同源虚化底 `--of-cutout: 1` 浅景深光学特写 + `L6` `2.39:1` 宽银幕胶片三联画并置 + `KT5` 光学去焦显影金句 + 大提琴低频氛围铺底配重句 `Silence Drop`，终帧真溶黑 `#000000`；
+       - **字幕体制（`SUB4`）**：影院级宽字距（`0.12em`）暖象牙细衬线纯字（`40px`，`y ≈ 1500px`）；4 片字幕 `top` 互差 `≥ 28px`、总跨度 `≥ 120px`！
+   - 将 3 条子片的 `editing_style`（`S01–S10`）、`color_lut`、`cold_open`（`H1–H6`）、精剪 `time_slices`、`silence_drops`、`layout_paradigm`、`speaker_mode`、`subtitle_system`（`SUB1–SUB6`）、`cover_topology`（`C1–C4`）与独立补素材清单完整写入 `master/script/master-plan.json`。
 3. **【闸门 2】母片与 3 子片方案确认（默认开启，指令带「一路跑完」可跳过）**：
    - 若带「一路跑完」：`gates.master_approved = "skipped_auto_run"`，直接进入步骤 E4；
    - 否则更新 `run.json`（`status: "waiting_approval"`、`step: "E3"`、`gates.pending_gate: "gate_2_master_plan"`），停下向用户展示：① 母片成片、目标平台封面路径与文案摘要；② `master-plan.json` 中的 3 条延伸子片差异化规划表；
@@ -217,18 +217,18 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 3 个目录 `variants/v1-<风格>/`、`variants/v2-<风格>/`、`variants/v3-<风格>/` 完全物理隔离，主 Agent 可同时派发 **3 个子代理**分别负责一条子片（不具备派子代理能力时串行完成）。
 - **子代理权限边界（与 [../SKILL.md](../SKILL.md) 保持一致）**：3 个子代理仅在各自专属目录 `variants/vN-<风格>/` 内拥有局部完整制作权（可写各自 `film/film.html`、独立渲染与初检、产出本子片封面/文案初稿及单条 `publish.json`），**严禁修改 `raw/`、`master-assets/`、`master/` 及另外两条子片目录，严禁调用任何发布操作或付费生成，严禁在运行目录外存放文件**。
 - 每条子片均以 `master-assets/` 为干净底料（需要局部引用母片某段特效时可按需引用，但不直接把焊死旧花字与旧 BGM 的母片当唯一底轨；原片含 BGM 时统一使用 `vocals_track` 配新风格 BGM），完整执行：
-  1. **各自按实际情况独立补充素材与音频预检**：先测定源片 `speaker_framing` 并锁定本子片 `scenes/subtitles.html` 精确时间戳，再在各自 `script/storyboard.json` 逐镜写明 `cue_sync_map`（本镜每句 `cue_start` → 精确局部秒数 `local_t = cue_start - clip_at` → 提炼自原话的 `2–7` 字屏显关键词 → 渐进 SVG/Canvas 动画），随后按 [sourcing.md](sourcing.md) 5 类通道独立寻源（含 `openfilm get sticker` 离线动态贴纸、优先 1–2 段免版权运动视频 B-roll、叠 SVG 前景动效的专属氛围图）并落盘各自 `materials/` 与 `film/assets/`，记录 `credits.json`（**严禁单支子片内同一视觉素材重复使用 `>1` 次，也严禁 4 条片照搬同一批补充素材**；通用素材同步一份进 `.local/openfilm-user/saved/`）；音频入 `film.html` 前须跑 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" probe-audio film/assets` 按实测 LUFS/LRA/峰点反算 `volume` 与入点；
-  2. **独立 OpenFilm 剪辑与出片初检**：先在根目录 source `env.sh` 再 `cd runs/<目录>/variants/vN-<风格>/film`（或在 5 层目录执行 `. ../../../../../.agents/skills/short-video-pipeline/scripts/env.sh`），严格落实 [editing-vfx.md](editing-vfx.md) 的分槽位剪辑节奏、反 PPT 信息密度红线（纯文字圆角卡 `≤25%`、语义 SVG/Canvas 动效 `≥45%`、静图 B-roll 必叠 SVG 矢量前景动效、单片每素材仅用 1 次）、**`speaker-pip` 五官完整保留（`v2≥74%` 严禁切嘴/切下巴，去右侧杂墙改用紧凑居中窗）与音画字逐句 `local_t` 同步红线（零 `t=0` 满屏摊牌、零前半抢跑死镜、`overlays` 单卡 `≤6.5s`、零跨镜借词与脑补长词）**、前景/人后特效层级与防人物遮挡硬规（信息型文字/图解严禁放 `--of-cutout: 1` 人后，人后巨字须缩小下沉保头顶 `y≥640px` 且仅限 `y=260..540px` 的 2–4 字单行短词，贴纸锚定载体并避开全屏头肩区 `x=220..860, y=280..1020`）与特效工艺（`v1` 真高节奏 ASL `≤3.5s` + 4K 阶梯跳切 + RGB 故障/甩切转场 + 流式打字机/HUD 准星实证；`v2` 统一 PiP 高度 + `clip-path` 形变/纸面滑动转场 + 全幅 SVG 图解与手绘双笔划错/弹性勾选；`v3` 去 `REC` 伪监视器套壳 + `--of-cutout: 1` 浅景深分离 + 2.39:1 宽幅空镜叠细腻流光 + 光学去焦显影与终帧真溶黑 `#000000`）、`master-plan.json` 中的 `opening_hook`/`ending_sentence`/`outro_design` 及四向安全区，执行 `OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers <N> --out ../output/0N-vN-<风格短名>.mp4`（单子片独立跑配 `--workers 6`；2 子片同跑各配 `--workers 4`；3 子片同时并行跑按 `3 / 3 / 2` 分配 `--workers`，保证全机总并发 `h264_nvenc` 会话 `≤ 8 路` 吃满显卡且不超限回退软编；`--of-cutout: 1` 仅在重点高潮镜开启且单段控 `≤4.2s`），逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/0N-vN-<风格短名>.mp4 --film-dir . --out-dir ../output/check`，亲自打开 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`safezone-pip.png`（如有 PiP）与 `safezone-cutouts.png`（如有）目检通过并写入 `output/check/`；
-  3. **独立目标平台文案**：按 [copywriting.md](copywriting.md) 紧贴本子片实际剪出的第一句话、案例与落点撰写四项文案、三层标签候选与空格版发布组合（**视频描述严禁提及任何具体秒数、时间点或片长数字**），落盘 `publish/publish.json`；
-  4. **独立目标平台封面（若 `covers_enabled` 为 `true`）**：按规划槽位优先从 `master-assets/clips/` 干净源片抽帧（同片内各平台取不同截帧），产出 `covers/0N-vN-<平台>.png`（抖音 `1080×1920`、视频号 `1080×1920`、小红书 `1080×1440`）与 `cover-spec.json`（非「意图电商」系列严禁混套「意图电商」标题图）；
-  5. **子片单条审核**：按 [publish-audit.md](publish-audit.md) 完成本子片所有目标平台审核并写回 `publish/publish.json` 的 `audit`。
+  1. **各自按实际情况独立补充素材与音效归一化**：先测定 `speaker_framing` 并锁定本子片精剪 `time_slices` 后的 `scenes/subtitles.html` 精确时间戳，在各自 `script/storyboard.json` 写明零复读 `cue_sync_map`（单锚点 `≤5` 字且与字幕重合 `<50%`），按 [sourcing.md](sourcing.md) 独立补充运动视频 B-roll 与真实素材（严查首中尾帧 `YAVG≥18`、无内部硬切 `scdet<16`、地标吻合、单片及跨 4 片 `64-bit dHash` 距离 `>10`），并对 `film/assets/` 短音效执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets`；
+  2. **独立 OpenFilm 剪辑、构建 `bgm-bed.m4a` 与出片初检**：拷入本槽位对应 `.cube` LUT 至 `film/looks/`，挂齐 `--of-lut`、同源虚化光学抠像（`width≥1080px`）、Boxless 去框化特效与对应 `SUB2/SUB3/SUB4` 零胶囊字幕，人声轨挂 `master-assets/clips/*-voice-treated.m4a`；写好 `film.html` 后先跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" build-bgm-bed --film-dir . --bgm assets/<bgm> --out assets/bgm-bed.m4a --drops "<t1:t2>"` 生成自动闪避与抽空留白铺底床，再执行 `OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers <N> --out ../output/0N-vN-<风格短名>.mp4`（单子片独立跑配 `--workers 6`；2 子片同跑各配 `--workers 4`；3 子片并行按 `3 / 3 / 2` 分配 `--workers`），逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/0N-vN-<风格短名>.mp4 --film-dir . --out-dir ../output/check`，亲自打开 `safezone-grid/tail/cuts/broll/pip/cutouts.png` 目检零 `hard_failures`；
+  3. **独立目标平台诚实文案**：按 [copywriting.md](copywriting.md) 紧贴本子片 `content_archetype` 与实际剪出的冷开首句、落点撰写四项文案（禁虚假破局清单承诺、禁生造歧义词、禁描述带秒数），落盘 `publish/publish.json`；
+  4. **独立目标平台杂志封面（若 `covers_enabled` 为 `true`）**：按 [cover-design.md](cover-design.md)（非「意图电商」系列按各自 `C2/C3/C4` 杂志拓扑：先共用或各自基于 `contact-sheet.jpg` 五维选出互不撞脸神态帧，`C3` 暖白底禁贴裸抠像改用胶片相框实拍裁切，主标题 `≥104px`/`≥100px`，零小胶囊标签堆砌），产出 `covers/0N-vN-<平台>.png` 与 `cover-spec.json`；
+  5. **子片单条审核**：按 [publish-audit.md](publish-audit.md)（含 `--publish-json` 复跑 `audit-render`）完成本子片全目标平台审核并写回 `publish/publish.json` 的 `audit`。
 
 ### 步骤 E5：主 Agent 统一复核、跨 4 片矩阵门禁与路径收口
 
 此步必须由**主 Agent 亲自串行执行**，不外包给子代理：
-1. **逐片视觉与自动化质检复核**：亲自核验全部 4 份 `output/check/qc-report.json`（连同 `--publish-json` 复查全部零 `hard_failures`，含 `pip_framing_checks` 与 `sync_checks` 全通过），**亲自打开全部 4 组 `safezone-grid.png`、`safezone-tail.png`、切点逐帧图 `safezone-cuts.png`、画中画 1:1 特写图 `safezone-pip.png`（如有 PiP）及抠像/贴纸专检图 `safezone-cutouts.png`（如有）核查右侧按钮区、底部 360px 死区、全屏不挡嘴、`speaker-pip` 五官完整无截嘴/下巴且无灰墙漏出、音画字逐句卡点同步无静态抢跑、人后文字/特效未被头肩遮挡、贴纸未压头脸、切点无双头/闭眼/亮度断崖穿帮与卡片不切底溢出**，并**亲自打开全部定制封面 PNG（默认 12 张，或 `4 × M` 张）目视复核**；
+1. **逐片视觉与自动化质检复核**：亲自核验全部 4 份 `output/check/qc-report.json`（连同 `--publish-json` 复查全部零 `hard_failures`），**亲自打开全部 4 组 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`safezone-broll.png`（如有）、`safezone-pip.png`（如有）及 `safezone-cutouts.png`（如有）核查四向安全区、Boxless 去框化视觉、同源虚化光学抠像、B-roll 无黑头/无地标穿帮、`speaker-pip` 五官完整、零复读音画同步与切点无穿帮**，并**亲自打开选片表 `contact-sheet.jpg` 与全部定制封面 PNG（默认 12 张，或 `4 × M` 张）目视复核**；
    - **无看图能力退路**：若当前 Agent 不具备看图能力，严禁伪造目检通过；须将各 `check.json` / `cover-spec.json` 视觉项记为 `"pending_human_visual_review"`、`run.json` 置 `status: "waiting_approval"`、`gates.pending_gate: "visual_review"`、`cross_audit_passed: false`（但仍须完成全部机械项审核并在下一步组装预览包列出全部待目检路径供用户肉眼签收）。
-2. **跨 4 片矩阵反克隆与差异门禁（必跑 `qc_video.py audit-matrix`）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-matrix --run-dir runs/<目录> --out runs/<目录>/delivery-matrix-qc.json`（或核验输出零 `hard_failures` 后归档至 `master/output/check/matrix-qc.json`），并按 [publish-audit.md](publish-audit.md) 第五节逐项执行跨片审核（母素材确认态、**4 片底层剪辑架构/人物形态/字幕体制真正互斥无换色克隆**、各片独立补素材合规、目标平台封面防撞帧/防撞标题/尺寸与视觉门禁、目标平台文案跨片防雷同及表单硬校验）；任一不通过即定向返工对应子片并复审；
+2. **跨 4 片矩阵反克隆与差异门禁（必跑 `qc_video.py audit-matrix`）**：执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-matrix --run-dir runs/<目录> --out runs/<目录>/master/output/check/matrix-qc.json` 确认零 `hard_failures`，并按 [publish-audit.md](publish-audit.md) 第五节逐项执行跨片审核（母素材与 `*-voice-treated.m4a` 就绪、4 片正交架构与 4 套零胶囊字幕指纹互斥、跨 4 片 B-roll `64-bit dHash` 零改名克隆、`C1–C4` 杂志封面拓扑与五维选帧过关、`content_archetype` 诚实文案防雷同及表单硬校验）；任一不通过即定向返工对应子片并复审；
 3. **路径与命名收口检查**：核验所有 JSON/MD 无绝对路径、文件名全符合字符白名单、无工作区外残留文件、`tmp/` 已清空。
 
 ### 步骤 E6：组装 `delivery/` 统一交付包与归档收尾
@@ -324,6 +324,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "id": "clip-01",
       "path": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4",
       "vocals_track": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI-vocals.wav",
+      "vocals_treated_track": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI-voice-treated.m4a",
       "duration_sec": 62.4,
       "aligned_transcript": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-transcript.json"
     }
@@ -342,6 +343,8 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ```json
 {
+  "content_archetype": "actionable_method",
+  "master_editing_style": "S01",
   "master_duration_sec": 135.0,
   "split_strategy": "long_split_3_angles",
   "target_platforms": ["douyin", "xhs", "shipinhao"],
@@ -349,7 +352,13 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
     {
       "id": "v1",
       "prefix": "01-v1",
+      "editing_style": "S02",
       "style_slug": "高节奏实证风",
+      "color_lut": "v1-crisp-contrast.cube",
+      "layout_paradigm": "fullscreen_jumpcut_kinetic",
+      "speaker_mode": "fullscreen_step_zoom",
+      "subtitle_system": "SUB2_kinetic_pop_no_pill",
+      "cover_topology": "C2_split_contrast",
       "color_palette": {
         "bg": "#060B14",
         "bg_2": "#0B1628",
@@ -358,14 +367,17 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
         "warn": "#FF6B35"
       },
       "source_clips": ["runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4"],
-      "angle": "前3秒抛反差结果，用真实搜索对比画面实证意图匹配",
-      "opening_hook": "前置2.8s结论金句冷开（裁净「那我们就把」等悬空代词，顶标补全主语冲突）",
+      "time_slices": [[54.2, 56.8], [7.2, 31.5], [34.0, 48.6]],
+      "silence_drops": [[28.4, 29.1]],
+      "cold_open": "H1 前置2.6s最狠结论金句冷开，切净原片前7.2s搭话冷场，删句切点用JL3实拍B-roll遮切",
+      "angle": "前3秒抛反差结果，用真实搜索对比界面视窗实证意图匹配",
+      "opening_hook": "前置2.6s结论金句冷开（裁净悬空代词，巨字锚点补全主语冲突）",
       "ending_sentence": "意图电商不是追着你推旧词，而是真正读懂你的上下文需求。",
-      "outro_design": "末句完整落音加40ms微淡出后切出全屏总结收束卡与辰奕简洁尾标（稳落y<=1540且不挡嘴），停留可读1.8s并留0.8s尾韵配合BGM自然淡出",
-      "visual_style": "高频跳切 + 弹窗关键词 + 实拍/官图B-roll穿插",
-      "bgm_mood": "轻快脉冲节奏",
-      "supplement_assets_plan": ["官方案例截图", "实拍购物场景空镜", "过渡音效"],
-      "cover_spec": "variant_custom",
+      "outro_design": "O1定帧印章落版：末句完整落音加40ms微淡出后切出无框金句收束，停留可读1.8s并留0.8s尾韵配合bgm-bed自然淡出",
+      "visual_style": "句界阶梯跳切 + Boxless无框巨字重锤 + PF6真实搜索界面3D视窗 + 实拍B-roll穿插",
+      "bgm_mood": "电子脉冲自动闪避铺底床 + 金句前Silence Drop",
+      "supplement_assets_plan": ["真实搜索界面截图", "实拍购物场景运动视频B-roll", "归一化Whoosh+SubHit音效"],
+      "cover_spec": "track_b_C2",
       "brand_slogan_mode": "chenyi_default"
     }
   ]
