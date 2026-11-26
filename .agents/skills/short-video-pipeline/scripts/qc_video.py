@@ -107,6 +107,34 @@ def run_cmd(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+_CUDA_HWACCEL_AVAILABLE: bool | None = None
+
+
+def has_cuda_hwaccel() -> bool:
+    global _CUDA_HWACCEL_AVAILABLE
+    if _CUDA_HWACCEL_AVAILABLE is not None:
+        return _CUDA_HWACCEL_AVAILABLE
+    if os.environ.get("SVP_DISABLE_PYTHON_GPU") == "1":
+        _CUDA_HWACCEL_AVAILABLE = False
+        return False
+    try:
+        proc = run_cmd(["ffmpeg", "-hide_banner", "-hwaccels"])
+        accels = {line.strip().lower() for line in proc.stdout.splitlines() if line.strip()}
+        _CUDA_HWACCEL_AVAILABLE = proc.returncode == 0 and "cuda" in accels
+    except Exception:
+        _CUDA_HWACCEL_AVAILABLE = False
+    return _CUDA_HWACCEL_AVAILABLE
+
+
+def run_ffmpeg_decode_cmd(build_cmd) -> subprocess.CompletedProcess[str]:
+    """Run an ffmpeg frame-extraction command with `-hwaccel cuda` first when available, falling back to CPU decode."""
+    if has_cuda_hwaccel():
+        proc = run_cmd(build_cmd(["-hwaccel", "cuda"]))
+        if proc.returncode == 0:
+            return proc
+    return run_cmd(build_cmd([]))
+
+
 def ffprobe_json(path: Path) -> dict[str, Any]:
     proc = run_cmd(
         [
@@ -849,38 +877,42 @@ def render_safezone_overlays(
     grid_path = out_dir / "safezone-grid.png"
     tail_path = out_dir / "safezone-tail.png"
 
-    cmd_grid = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-    for t in timestamps:
-        cmd_grid += ["-ss", f"{t:.2f}", "-i", str(video)]
-    f_parts = []
-    for idx in range(len(timestamps)):
-        f_parts.append(
-            f"[{idx}:v]scale=1080:1920,{box_filter},scale=540:960[v{idx}]"
-        )
-    f_parts.append("[v0][v1][v2]hstack=inputs=3[top]")
-    f_parts.append("[v3][v4][v5]hstack=inputs=3[bot]")
-    f_parts.append("[top][bot]vstack=inputs=2[out]")
-    cmd_grid += [
-        "-filter_complex",
-        ";".join(f_parts),
-        "-map",
-        "[out]",
-        "-frames:v",
-        "1",
-        str(grid_path),
-    ]
-    proc1 = run_cmd(cmd_grid)
+    def _build_grid_cmd(hw_flags: list[str]) -> list[str]:
+        c = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        for t in timestamps:
+            c += [*hw_flags, "-ss", f"{t:.2f}", "-i", str(video)]
+        f_parts = []
+        for idx in range(len(timestamps)):
+            f_parts.append(
+                f"[{idx}:v]scale=1080:1920,{box_filter},scale=540:960[v{idx}]"
+            )
+        f_parts.append("[v0][v1][v2]hstack=inputs=3[top]")
+        f_parts.append("[v3][v4][v5]hstack=inputs=3[bot]")
+        f_parts.append("[top][bot]vstack=inputs=2[out]")
+        c += [
+            "-filter_complex",
+            ";".join(f_parts),
+            "-map",
+            "[out]",
+            "-frames:v",
+            "1",
+            str(grid_path),
+        ]
+        return c
+
+    proc1 = run_ffmpeg_decode_cmd(_build_grid_cmd)
     if proc1.returncode != 0:
         raise RuntimeError(f"safezone-grid render failed: {proc1.stderr.strip()}")
 
     tail_t = round(max(0.05, duration - 0.8), 2)
-    proc2 = run_cmd(
-        [
+    proc2 = run_ffmpeg_decode_cmd(
+        lambda hw_flags: [
             "ffmpeg",
             "-y",
             "-hide_banner",
             "-loglevel",
             "error",
+            *hw_flags,
             "-ss",
             f"{tail_t:.2f}",
             "-i",
@@ -911,39 +943,43 @@ def render_safezone_overlays(
         else:
             picked = [valid_cuts[0], valid_cuts[len(valid_cuts) // 2], valid_cuts[-1]]
         cuts_path = out_dir / "safezone-cuts.png"
-        cmd_cuts = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-        f_cut_parts: list[str] = []
-        row_labels: list[str] = []
-        inp_idx = 0
-        for row_i, ct in enumerate(picked):
-            tri = [max(0.02, ct - 0.034), ct, min(duration - 0.02, ct + 0.034)]
-            row_inps = []
-            for tt in tri:
-                cmd_cuts += ["-ss", f"{tt:.3f}", "-i", str(video)]
-                lbl = f"c{inp_idx}"
-                f_cut_parts.append(f"[{inp_idx}:v]scale=360:640[{lbl}]")
-                row_inps.append(f"[{lbl}]")
-                inp_idx += 1
-            rlbl = f"row{row_i}"
-            f_cut_parts.append(f"{''.join(row_inps)}hstack=inputs=3[{rlbl}]")
-            row_labels.append(f"[{rlbl}]")
-        if len(row_labels) == 1:
-            final_map = row_labels[0]
-        else:
-            f_cut_parts.append(
-                f"{''.join(row_labels)}vstack=inputs={len(row_labels)}[cuts_out]"
-            )
-            final_map = "[cuts_out]"
-        cmd_cuts += [
-            "-filter_complex",
-            ";".join(f_cut_parts),
-            "-map",
-            final_map,
-            "-frames:v",
-            "1",
-            str(cuts_path),
-        ]
-        proc3 = run_cmd(cmd_cuts)
+
+        def _build_cuts_cmd(hw_flags: list[str]) -> list[str]:
+            c = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+            f_cut_parts: list[str] = []
+            row_labels: list[str] = []
+            inp_idx = 0
+            for row_i, ct in enumerate(picked):
+                tri = [max(0.02, ct - 0.034), ct, min(duration - 0.02, ct + 0.034)]
+                row_inps = []
+                for tt in tri:
+                    c += [*hw_flags, "-ss", f"{tt:.3f}", "-i", str(video)]
+                    lbl = f"c{inp_idx}"
+                    f_cut_parts.append(f"[{inp_idx}:v]scale=360:640[{lbl}]")
+                    row_inps.append(f"[{lbl}]")
+                    inp_idx += 1
+                rlbl = f"row{row_i}"
+                f_cut_parts.append(f"{''.join(row_inps)}hstack=inputs=3[{rlbl}]")
+                row_labels.append(f"[{rlbl}]")
+            if len(row_labels) == 1:
+                final_map = row_labels[0]
+            else:
+                f_cut_parts.append(
+                    f"{''.join(row_labels)}vstack=inputs={len(row_labels)}[cuts_out]"
+                )
+                final_map = "[cuts_out]"
+            c += [
+                "-filter_complex",
+                ";".join(f_cut_parts),
+                "-map",
+                final_map,
+                "-frames:v",
+                "1",
+                str(cuts_path),
+            ]
+            return c
+
+        proc3 = run_ffmpeg_decode_cmd(_build_cuts_cmd)
         if proc3.returncode == 0:
             result["safezone_cuts"] = rel_path(cuts_path)
             result["cut_burst_timestamps_sec"] = [round(c, 3) for c in picked]
@@ -969,44 +1005,48 @@ def render_safezone_overlays(
             + ",drawbox=x=220:y=280:w=640:h=740:color=magenta@0.80:t=4"
             + ",drawbox=x=0:y=640:w=1080:h=2:color=yellow@0.70:t=fill"
         )
-        cmd_cs = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-        f_cs_parts: list[str] = []
-        for idx, tt in enumerate(picked_cs):
-            cmd_cs += ["-ss", f"{tt:.2f}", "-i", str(video)]
-            f_cs_parts.append(
-                f"[{idx}:v]scale=1080:1920,{head_box_filter},scale=360:640[cs{idx}]"
-            )
-        n = len(picked_cs)
-        if n <= 3:
-            if n == 1:
-                cs_map = "[cs0]"
-            else:
+
+        def _build_cs_cmd(hw_flags: list[str]) -> list[str]:
+            c = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+            f_cs_parts: list[str] = []
+            for idx, tt in enumerate(picked_cs):
+                c += [*hw_flags, "-ss", f"{tt:.2f}", "-i", str(video)]
                 f_cs_parts.append(
-                    f"{''.join(f'[cs{i}]' for i in range(n))}hstack=inputs={n}[cs_out]"
+                    f"[{idx}:v]scale=1080:1920,{head_box_filter},scale=360:640[cs{idx}]"
                 )
+            n = len(picked_cs)
+            if n <= 3:
+                if n == 1:
+                    cs_map = "[cs0]"
+                else:
+                    f_cs_parts.append(
+                        f"{''.join(f'[cs{i}]' for i in range(n))}hstack=inputs={n}[cs_out]"
+                    )
+                    cs_map = "[cs_out]"
+            else:
+                cols = 3
+                pad_n = (cols - (n % cols)) % cols
+                for p_i in range(pad_n):
+                    f_cs_parts.append(f"color=c=black:s=360x640:d=1[csp{p_i}]")
+                all_lbls = [f"[cs{i}]" for i in range(n)] + [f"[csp{p_i}]" for p_i in range(pad_n)]
+                r1 = "".join(all_lbls[:3])
+                r2 = "".join(all_lbls[3:6])
+                f_cs_parts.append(f"{r1}hstack=inputs=3[csr1]")
+                f_cs_parts.append(f"{r2}hstack=inputs=3[csr2]")
+                f_cs_parts.append("[csr1][csr2]vstack=inputs=2[cs_out]")
                 cs_map = "[cs_out]"
-        else:
-            cols = 3
-            pad_n = (cols - (n % cols)) % cols
-            for p_i in range(pad_n):
-                f_cs_parts.append(f"color=c=black:s=360x640:d=1[csp{p_i}]")
-            all_lbls = [f"[cs{i}]" for i in range(n)] + [f"[csp{p_i}]" for p_i in range(pad_n)]
-            r1 = "".join(all_lbls[:3])
-            r2 = "".join(all_lbls[3:6])
-            f_cs_parts.append(f"{r1}hstack=inputs=3[csr1]")
-            f_cs_parts.append(f"{r2}hstack=inputs=3[csr2]")
-            f_cs_parts.append("[csr1][csr2]vstack=inputs=2[cs_out]")
-            cs_map = "[cs_out]"
-        cmd_cs += [
-            "-filter_complex",
-            ";".join(f_cs_parts),
-            "-map",
-            cs_map,
-            "-frames:v",
-            "1",
-            str(cs_path),
-        ]
-        proc4 = run_cmd(cmd_cs)
+            c += [
+                "-filter_complex",
+                ";".join(f_cs_parts),
+                "-map",
+                cs_map,
+                "-frames:v",
+                "1",
+                str(cs_path),
+            ]
+            return c
+
+        proc4 = run_ffmpeg_decode_cmd(_build_cs_cmd)
         if proc4.returncode == 0:
             result["safezone_cutouts"] = rel_path(cs_path)
             result["cutout_sticker_timestamps_sec"] = picked_cs
@@ -1020,44 +1060,48 @@ def render_safezone_overlays(
         else:
             picked_pip = raw_pip
         pip_path = out_dir / "safezone-pip.png"
-        cmd_pip = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-        f_pip_parts: list[str] = []
-        for idx, tt in enumerate(picked_pip):
-            cmd_pip += ["-ss", f"{tt:.2f}", "-i", str(video)]
-            f_pip_parts.append(
-                f"[{idx}:v]scale=1080:1920,crop=1080:560:0:130,"
-                f"drawbox=x=0:y=50:w=1080:h=2:color=red@0.85:t=fill,"
-                f"scale=720:374[pp{idx}]"
-            )
-        npip = len(picked_pip)
-        if npip == 1:
-            pip_map = "[pp0]"
-        elif npip == 2:
-            f_pip_parts.append("[pp0][pp1]hstack=inputs=2[pip_out]")
-            pip_map = "[pip_out]"
-        else:
-            cols = 2
-            pad_n = (cols - (npip % cols)) % cols
-            for p_i in range(pad_n):
-                f_pip_parts.append(f"color=c=black:s=720x374:d=1[ppp{p_i}]")
-            all_pp = [f"[pp{i}]" for i in range(npip)] + [f"[ppp{p_i}]" for p_i in range(pad_n)]
-            rows = []
-            for r_i in range(0, len(all_pp), 2):
-                rlbl = f"ppr{r_i // 2}"
-                f_pip_parts.append(f"{all_pp[r_i]}{all_pp[r_i + 1]}hstack=inputs=2[{rlbl}]")
-                rows.append(f"[{rlbl}]")
-            f_pip_parts.append(f"{''.join(rows)}vstack=inputs={len(rows)}[pip_out]")
-            pip_map = "[pip_out]"
-        cmd_pip += [
-            "-filter_complex",
-            ";".join(f_pip_parts),
-            "-map",
-            pip_map,
-            "-frames:v",
-            "1",
-            str(pip_path),
-        ]
-        proc5 = run_cmd(cmd_pip)
+
+        def _build_pip_cmd(hw_flags: list[str]) -> list[str]:
+            c = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+            f_pip_parts: list[str] = []
+            for idx, tt in enumerate(picked_pip):
+                c += [*hw_flags, "-ss", f"{tt:.2f}", "-i", str(video)]
+                f_pip_parts.append(
+                    f"[{idx}:v]scale=1080:1920,crop=1080:560:0:130,"
+                    f"drawbox=x=0:y=50:w=1080:h=2:color=red@0.85:t=fill,"
+                    f"scale=720:374[pp{idx}]"
+                )
+            npip = len(picked_pip)
+            if npip == 1:
+                pip_map = "[pp0]"
+            elif npip == 2:
+                f_pip_parts.append("[pp0][pp1]hstack=inputs=2[pip_out]")
+                pip_map = "[pip_out]"
+            else:
+                cols = 2
+                pad_n = (cols - (npip % cols)) % cols
+                for p_i in range(pad_n):
+                    f_pip_parts.append(f"color=c=black:s=720x374:d=1[ppp{p_i}]")
+                all_pp = [f"[pp{i}]" for i in range(npip)] + [f"[ppp{p_i}]" for p_i in range(pad_n)]
+                rows = []
+                for r_i in range(0, len(all_pp), 2):
+                    rlbl = f"ppr{r_i // 2}"
+                    f_pip_parts.append(f"{all_pp[r_i]}{all_pp[r_i + 1]}hstack=inputs=2[{rlbl}]")
+                    rows.append(f"[{rlbl}]")
+                f_pip_parts.append(f"{''.join(rows)}vstack=inputs={len(rows)}[pip_out]")
+                pip_map = "[pip_out]"
+            c += [
+                "-filter_complex",
+                ";".join(f_pip_parts),
+                "-map",
+                pip_map,
+                "-frames:v",
+                "1",
+                str(pip_path),
+            ]
+            return c
+
+        proc5 = run_ffmpeg_decode_cmd(_build_pip_cmd)
         if proc5.returncode == 0:
             result["safezone_pip"] = rel_path(pip_path)
             result["pip_timestamps_sec"] = picked_pip

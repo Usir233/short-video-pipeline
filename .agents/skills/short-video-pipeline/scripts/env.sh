@@ -42,6 +42,14 @@ export PLAYWRIGHT_BROWSERS_PATH="$SVP_ROOT/browsers/ms-playwright"
 export npm_config_cache="$SVP_ROOT/.local/npm-cache"
 export PIP_CACHE_DIR="$SVP_ROOT/.local/pip-cache"
 
+# Python 自动 GPU 推理钩子（自动预加载虚拟环境内 CUDA/cuDNN 并将 ONNX Runtime 提升至 CUDA/DirectML，不改动配套仓库源码）
+_svp_py_gpu="$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/py_gpu_site"
+case ":${PYTHONPATH:-}:" in
+  *":$_svp_py_gpu:"*) ;;
+  *) export PYTHONPATH="$_svp_py_gpu${PYTHONPATH:+:$PYTHONPATH}" ;;
+esac
+unset _svp_py_gpu
+
 # 仅在当前 shell 会话中把工作区的 node_modules/.bin 放到 PATH 最前，
 # 避免直接执行 openfilm 时误命中工作区外的全局版本（不改动任何 shell 配置文件）。
 case ":$PATH:" in

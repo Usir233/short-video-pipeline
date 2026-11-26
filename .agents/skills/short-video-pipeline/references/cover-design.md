@@ -319,7 +319,7 @@
 
 ### 14.4 制作与看图自检方式
 
-- 所有制作命令先执行 `. .agents/skills/short-video-pipeline/scripts/env.sh`，复用工作区已有的 `ffmpeg`、`PIL/numpy` 与 `browsers/ms-playwright/`（HTML/SVG/CSS + Playwright 无头截图，全程不往系统安装全局依赖）。
+- 所有制作命令先执行 `. .agents/skills/short-video-pipeline/scripts/env.sh`，复用工作区已有的 `ffmpeg`（抽帧优先加 `-hwaccel cuda`）、`rea-video/.venv` 内的 `PIL/numpy/cv2/onnxruntime-gpu`（运行 Python AI 抠像或图像处理脚本时优先用 `rea-video/.venv` 解释器自动走 `CUDAExecutionProvider` GPU 推理）与 `browsers/ms-playwright/`（HTML/SVG/CSS + Playwright 无头截图，全程不往系统安装全局依赖）。
 - 成品渲染完毕后，**Agent 必须亲自打开全部目标平台 PNG 看图核对第 12 节全部 8 项检查**（以及像素尺寸核验），任何一项不通过即返工修正，直到全部通过并写入 `covers/cover-spec.json`。若当前 Agent 不具备看图能力，严禁伪造视觉通过，须将 `cover-spec.json` 视觉自检标为 `"pending_human_visual_review"`、`run.json` 置 `status: "waiting_approval"` 停下交用户目检。
 
 ### 14.5 发布协同约定（CreatorHub 封面边界 → 手动发布）

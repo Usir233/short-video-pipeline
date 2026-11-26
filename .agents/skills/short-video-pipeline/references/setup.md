@@ -30,6 +30,7 @@
   | `REA_VIDEO_HOME` | `.local/rea-video/home/` | rea-video 的记忆文件 | `~/.rea-video` |
   | `PLAYWRIGHT_BROWSERS_PATH` | `browsers/ms-playwright/` | OpenFilm 渲染和 CreatorHub 用的浏览器内核 | 用户缓存目录下的 `ms-playwright` |
   | `npm_config_cache`、`PIP_CACHE_DIR` | `.local/npm-cache/`、`.local/pip-cache/` | 包管理器的下载缓存 | `~/.npm`、用户缓存目录 |
+  | `PYTHONPATH`（前置钩子） | `.agents/skills/short-video-pipeline/scripts/py_gpu_site` | 自动预加载工作区虚拟环境内的 CUDA/cuDNN 并把 Python `onnxruntime`（`rea-video` 分轨/OCR、封面抠像等）优先提升至 `CUDAExecutionProvider`（不改上游源码，无独显自动回退 CPU） | 仅走 `CPUExecutionProvider` |
   | `SVP_ROOT` | 工作区根目录的绝对路径 | 给需要绝对路径的接口用 | — |
   | `PATH`（仅当前 shell） | 前置 `$SVP_ROOT/node_modules/.bin` | 确保当前 shell 中直接运行 `openfilm` 也命中工作区局部版 | 命中工作区外全局 `openfilm` |
 
@@ -72,8 +73,12 @@ node_modules/.bin/openfilm doctor
 git clone https://github.com/JuneYaooo/rea-video.git
 python3.12 -m venv rea-video/.venv          # 换成本机有的 3.12–3.14 解释器
 (cd rea-video && .venv/bin/python -m pip install -e ".[ocr,asr]")
+# 本机有 NVIDIA 独显时，在 rea-video/.venv 内将 CPU 版 onnxruntime 替换为自带 CUDA/cuDNN 轮子的 GPU 版，并写入局部 .pth 钩子（不改 rea-video 源码）：
+rea-video/.venv/bin/python -m pip uninstall -y onnxruntime && rea-video/.venv/bin/python -m pip install "onnxruntime-gpu[cuda,cudnn]"
+rea-video/.venv/bin/python -c 'import pathlib, site; p = pathlib.Path([s for s in site.getsitepackages() if "site-packages" in s][0]) / "svp_gpu_site.pth"; p.write_text(str((pathlib.Path.cwd() / ".agents/skills/short-video-pipeline/scripts/py_gpu_site").resolve()) + "\n", encoding="utf-8")'
 rea-video/.venv/bin/rea-video --help
 ```
+*(Windows 下将 `.venv/bin/python` 与 `.venv/bin/rea-video` 对应替换为 `.venv/Scripts/python.exe` 与 `.venv/Scripts/rea-video.exe`；无 NVIDIA 独显时跳过 `onnxruntime-gpu` 替换步骤即可。)*
 
 依赖装进 `rea-video/.venv`，不进系统 Python。不要运行它的 `scripts/install_skill.sh`：那个脚本会往系统 Python 和用户主目录里装东西。
 
@@ -102,9 +107,10 @@ curl -fsS http://127.0.0.1:8000/health
 # OpenFilm
 npm install openfilm@latest
 
-# rea-video
+# rea-video（若本机有 NVIDIA 独显，pip install 后重新确保 onnxruntime-gpu[cuda,cudnn] 保持生效）
 git -C rea-video pull --ff-only
 (cd rea-video && .venv/bin/python -m pip install -e ".[ocr,asr]")
+rea-video/.venv/bin/python -m pip uninstall -y onnxruntime && rea-video/.venv/bin/python -m pip install "onnxruntime-gpu[cuda,cudnn]"
 
 # CreatorHub：先确认没有正在执行的任务，再停服务、更新、重装依赖、重启
 curl -fsS "http://127.0.0.1:8000/api/task-queue?state=running"

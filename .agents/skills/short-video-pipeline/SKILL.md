@@ -181,7 +181,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 **先整篇读 `rea-video/skills/rea-video/SKILL.md`，按它的流程做。** 本工作区的约定：
 
-- 命令不在 PATH 里，用 `rea-video/.venv/bin/rea-video`。
+- 命令不在 PATH 里，用 `rea-video/.venv/bin/rea-video`（Windows 为 `rea-video/.venv/Scripts/rea-video.exe`；在已装 NVIDIA 独显的机器上，`rea-video/.venv` 已配置 `onnxruntime-gpu[cuda,cudnn]` 与工作区 `py_gpu_site` 自动钩子，UVR/BandIt 人声音效分离、RapidOCR 及 Python ONNX 抠像均默认走 `CUDAExecutionProvider` GPU 推理，无需改 `rea-video/` 源码）。
 - 默认不配 VLM。你能看图时，你就是 VLM：必须做它的「看图复核并入」（`review` → 填 `review_answers.json` → `apply-review`）。
 - 按 `references/setup.md` 安装时带了字幕识别和语音识别，`decompose` 不要加 `--no-asr`、`--no-packaging`。
 
