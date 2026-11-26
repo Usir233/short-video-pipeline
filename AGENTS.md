@@ -57,7 +57,7 @@
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/copywriting.md`：视频号、小红书、抖音发布文案写法（四项文案、三层标签法、辰奕品牌主张融入、字段映射与多片防雷同）
 - `references/cover-design.md`：「意图电商」三平台口播视频封面设计规范、品牌固定图路径、出图检查与手动发布协同（支持多账号组扩展独立模板文档）
-- `references/editing-vfx.md`：剪辑方式与 OpenFilm 特效工艺规范（分风格 ASL 与反死镜红线、纯文字卡 `≤25%` 与语义 SVG/Canvas 动效 `≥45%` 信息密度、单片视觉素材严格单次使用、三层真会动素材与静图叠 SVG 前景、前景/人后抠像防遮挡与贴纸头肩避让、跨轨防浮点叠影、声画成对转场、零幽灵剧透、OpenFilm 原生 VFX 与 `motion-kit` 原语库）
+- `references/editing-vfx.md`：剪辑方式与 OpenFilm 特效工艺规范（分风格 ASL 与反死镜红线、纯文字卡 `≤25%` 与语义 SVG/Canvas 动效 `≥45%` 信息密度、**音画字逐句 `local_t` 卡点同步与零静态摊牌/零脑补生造词**、**`speaker-pip` 五官防截断（`v2≥74%`）与去杂墙**、单片视觉素材严格单次使用、三层真会动素材与静图叠 SVG 前景、前景/人后抠像防遮挡与贴纸头肩避让、跨轨防浮点叠影、声画成对转场、零幽灵剧透、OpenFilm 原生 VFX 与 `motion-kit` 原语库）
 - `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、粗剪与打马赛克等人工确认闸门、母素材确立、1 完整特效母片 + 3 延伸风格子片、防传混路径命名与 `delivery/` 统一交付包）
 - `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.4.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线
 - `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/文案/封面/合规校验、分平台表单硬规则、入口 E 跨 4 片与路径收口门禁、自动修正/阻断机制）

@@ -27,6 +27,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+from html.parser import HTMLParser
 import json
 import math
 import os
@@ -35,6 +36,17 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+SYNC_STOPWORDS = {
+    "我们", "你们", "他们", "现在", "最近", "这个", "这些", "那个", "那些",
+    "一个", "一些", "一件", "一种", "部分", "因为", "所以", "但是", "不过",
+    "如果", "虽然", "而且", "或者", "还是", "以及", "已经", "开始", "正在",
+    "可以", "可能", "觉得", "看到", "发现", "自己", "大家", "很多", "比较",
+    "非常", "特别", "其实", "当时", "过去", "以前", "之后", "时候", "事情",
+    "问题", "方面", "整个", "普遍", "慢慢", "几乎", "都是", "也是", "就是",
+    "不是", "没有", "还有", "首先", "第一", "第二", "另外", "外加", "比如",
+    "对于", "来讲", "跨境", "电商", "老板", "公司", "企业", "行业", "赛道",
+}
 
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 
@@ -345,6 +357,331 @@ def parse_css_px(style: str, prop: str, default: float | None = None) -> float |
     return float(m.group(1)) if m else default
 
 
+def extract_keyframes_blocks(css_text: str) -> dict[str, str]:
+    blocks: dict[str, str] = {}
+    for m in re.finditer(r"@keyframes\s+([A-Za-z0-9_-]+)\s*\{", css_text, flags=re.IGNORECASE):
+        name = m.group(1)
+        depth = 1
+        i = m.end()
+        n = len(css_text)
+        while i < n and depth > 0:
+            if css_text[i] == "{":
+                depth += 1
+            elif css_text[i] == "}":
+                depth -= 1
+            i += 1
+        blocks[name] = css_text[m.end() : max(m.end(), i - 1)]
+    return blocks
+
+
+def parse_css_inset(expr: str, box_w: float, box_h: float) -> tuple[float, float, float, float] | None:
+    core = re.split(r"\bround\b", expr, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    tokens = [t for t in re.split(r"\s+", core) if t]
+    if not tokens or len(tokens) > 4:
+        return None
+
+    def val_px(tok: str, ref: float) -> float | None:
+        m_px = re.match(r"^(-?\d+(?:\.\d+)?)px$", tok, flags=re.IGNORECASE)
+        if m_px:
+            return float(m_px.group(1))
+        m_pct = re.match(r"^(-?\d+(?:\.\d+)?)%$", tok)
+        if m_pct:
+            return ref * float(m_pct.group(1)) / 100.0
+        if tok in {"0", "0.0"}:
+            return 0.0
+        return None
+
+    if len(tokens) == 1:
+        t_raw, r_raw, b_raw, l_raw = tokens[0], tokens[0], tokens[0], tokens[0]
+    elif len(tokens) == 2:
+        t_raw, r_raw, b_raw, l_raw = tokens[0], tokens[1], tokens[0], tokens[1]
+    elif len(tokens) == 3:
+        t_raw, r_raw, b_raw, l_raw = tokens[0], tokens[1], tokens[2], tokens[1]
+    else:
+        t_raw, r_raw, b_raw, l_raw = tokens[0], tokens[1], tokens[2], tokens[3]
+
+    tv = val_px(t_raw, box_h)
+    rv = val_px(r_raw, box_w)
+    bv = val_px(b_raw, box_h)
+    lv = val_px(l_raw, box_w)
+    if tv is None or rv is None or bv is None or lv is None:
+        return None
+    return (tv, rv, bv, lv)
+
+
+def resolve_pip_steady_inset(
+    merged_css: str, keyframes_map: dict[str, str], box_w: float, box_h: float
+) -> tuple[float, float, float, float]:
+    candidates: list[tuple[float, float, float, float]] = []
+    for m in re.finditer(r"clip-path\s*:\s*inset\(([^)]+)\)", merged_css, flags=re.IGNORECASE):
+        ins = parse_css_inset(m.group(1), box_w, box_h)
+        if ins:
+            candidates.append(ins)
+    for am in re.finditer(r"animation(?:-name)?\s*:\s*([A-Za-z0-9_-]+)", merged_css, flags=re.IGNORECASE):
+        kf_body = keyframes_map.get(am.group(1), "")
+        if kf_body:
+            for m in re.finditer(r"clip-path\s*:\s*inset\(([^)]+)\)", kf_body, flags=re.IGNORECASE):
+                ins = parse_css_inset(m.group(1), box_w, box_h)
+                if ins:
+                    candidates.append(ins)
+    if not candidates:
+        return (0.0, 0.0, 0.0, 0.0)
+    # Pick the steady/tightest vertical crop state (largest top+bottom inset)
+    return max(candidates, key=lambda x: x[0] + x[2])
+
+
+def extract_cjk_bigrams(text: str) -> set[str]:
+    clean = re.sub(r"[^\u4e00-\u9fff]+", " ", text)
+    grams: set[str] = set()
+    for chunk in clean.split():
+        for i in range(len(chunk) - 1):
+            bg = chunk[i : i + 2]
+            if bg not in SYNC_STOPWORDS:
+                grams.add(bg)
+    return grams
+
+
+class _SceneSyncDOMParser(HTMLParser):
+    """Walk scene HTML/SVG DOM to separate t=0 upfront visible text from opacity=0 progressively revealed text."""
+
+    def __init__(self, cls_zero_opacity: set[str], id_zero_opacity: set[str], delayed_id_prefixes: set[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self.cls_zero = cls_zero_opacity
+        self.id_zero = id_zero_opacity
+        self.delayed_prefixes = delayed_id_prefixes
+        self.stack: list[dict[str, Any]] = []
+        self.upfront_texts: list[str] = []
+        self.deferred_texts: list[str] = []
+        self.all_texts: list[str] = []
+
+    def _is_hidden_node(self, tag: str, attrs_dict: dict[str, str]) -> tuple[bool, str]:
+        el_id = attrs_dict.get("id", "")
+        classes = attrs_dict.get("class", "").split()
+        style = attrs_dict.get("style", "")
+        op_attr = attrs_dict.get("opacity", "").strip()
+        hidden = False
+        if op_attr in {"0", "0.0", "0.00"}:
+            hidden = True
+        if re.search(r"(?:^|[;\s])opacity\s*:\s*0(?:\.0+)?(?:\s*;|\s*$)", style, flags=re.IGNORECASE):
+            hidden = True
+        if re.search(r"(?:^|[;\s])display\s*:\s*none", style, flags=re.IGNORECASE):
+            hidden = True
+        if el_id and el_id in self.id_zero:
+            hidden = True
+        if any(c in self.cls_zero for c in classes):
+            hidden = True
+        return hidden, el_id
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        t_low = tag.lower()
+        ad = {k.lower(): (v or "") for k, v in attrs}
+        own_hidden, el_id = self._is_hidden_node(t_low, ad)
+        parent_hidden = self.stack[-1]["hidden"] if self.stack else False
+        parent_delayed = self.stack[-1]["delayed"] if self.stack else False
+        own_delayed = bool(
+            el_id
+            and any(
+                el_id == p or (len(p) >= 1 and el_id.startswith(p) and el_id[len(p) :].isdigit())
+                for p in self.delayed_prefixes
+            )
+        )
+        self.stack.append(
+            {
+                "tag": t_low,
+                "id": el_id,
+                "hidden": parent_hidden or own_hidden,
+                "delayed": parent_delayed or (own_hidden and (own_delayed or not self.delayed_prefixes)),
+                "buf": [],
+            }
+        )
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.stack:
+            return
+        node = self.stack.pop()
+        if node["tag"] in {"script", "style", "head", "title"}:
+            return
+        txt = re.sub(r"\s+", " ", "".join(node["buf"])).strip()
+        if not txt:
+            return
+        self.all_texts.append(txt)
+        if node["hidden"] and node["delayed"]:
+            self.deferred_texts.append(txt)
+        elif not node["hidden"]:
+            self.upfront_texts.append(txt)
+        else:
+            # Hidden at t=0 via opacity:0, but immediately revealed at t<=0.4s without delayed offset
+            self.upfront_texts.append(txt)
+
+    def handle_data(self, data: str) -> None:
+        if not self.stack:
+            return
+        if self.stack[-1]["tag"] in {"script", "style", "head", "title"}:
+            return
+        if data.strip():
+            self.stack[-1]["buf"].append(data)
+
+
+def analyze_scene_sync(
+    scene_path: Path,
+    clip_id: str,
+    track: str,
+    at: float,
+    dur: float,
+    all_cues: list[tuple[float, float, str]],
+) -> dict[str, Any]:
+    end = at + dur
+    shot_cues = [c for c in all_cues if c[1] > at + 0.18 and c[0] < end - 0.18]
+    next_cues = [c for c in all_cues if end - 0.05 <= c[0] <= end + 6.5]
+    txt = scene_path.read_text(encoding="utf-8", errors="replace")
+
+    # 1. Identify CSS classes/IDs with initial opacity: 0
+    cls_zero: set[str] = set()
+    id_zero: set[str] = set()
+    for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", txt, flags=re.IGNORECASE):
+        for cm in re.finditer(r"([.#][A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb):
+            sel, body = cm.group(1), cm.group(2)
+            if re.search(r"(?:^|[;\s])opacity\s*:\s*0(?:\.0+)?(?:\s*;|\s*$)", body, flags=re.IGNORECASE):
+                if sel.startswith("."):
+                    cls_zero.add(sel[1:])
+                else:
+                    id_zero.add(sel[1:])
+
+    # 2. Extract JS timing offsets & delayed element IDs/prefixes
+    scripts = "\n".join(re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", txt, flags=re.IGNORECASE))
+    triggers: list[float] = []
+    for m in re.finditer(r"\bt\s*-\s*(\d+(?:\.\d+)?)", scripts):
+        v = float(m.group(1))
+        if 0.0 < v <= dur + 0.5:
+            triggers.append(v)
+    for m in re.finditer(
+        r"(?:delays|starts|steps|times|T_\w+)\s*=\s*\[([^\]]+)\]", scripts, flags=re.IGNORECASE
+    ):
+        for nm in re.findall(r"\d+(?:\.\d+)?", m.group(1)):
+            v = float(nm)
+            if 0.0 < v <= dur + 0.5:
+                triggers.append(v)
+    for m in re.finditer(r"\bconst\s+T[A-Za-z0-9_]*\s*=\s*(\d+(?:\.\d+)?)", scripts):
+        v = float(m.group(1))
+        if 0.0 < v <= dur + 0.5:
+            triggers.append(v)
+
+    # Detect loop-computed offsets: for(let i=0; i<N; i++) or ['a','b','c'].forEach
+    loop_counts: list[int] = [int(x) for x in re.findall(r"<\s*(\d+)\s*;", scripts) if 1 < int(x) <= 12]
+    for arr_m in re.finditer(r"\[([^\]]+)\]\.forEach", scripts):
+        items = [x.strip() for x in arr_m.group(1).split(",") if x.strip()]
+        if 1 < len(items) <= 12:
+            loop_counts.append(len(items))
+    max_n = max(loop_counts) if loop_counts else 0
+    if max_n >= 2:
+        for lm in re.finditer(
+            r"(?:(\d+(?:\.\d+)?)\s*[+-]\s*)?[A-Za-z_]\w*\s*\*\s*(\d+(?:\.\d+)?)", scripts
+        ):
+            base = float(lm.group(1)) if lm.group(1) else 0.0
+            step = float(lm.group(2))
+            cand = base + (max_n - 1) * step
+            if 0.0 < cand <= dur + 1.0:
+                triggers.append(round(cand, 3))
+
+    max_trigger = max(triggers) if triggers else 0.0
+
+    # Identify element IDs/prefixes revealed with delay >= 0.45s
+    delayed_prefixes: set[str] = set()
+    if max_trigger >= 0.45:
+        for gm in re.finditer(r"getElementById\(\s*['\"]([A-Za-z0-9_-]+)['\"]\s*(?:\+)?", scripts):
+            delayed_prefixes.add(gm.group(1))
+        for arr_m in re.finditer(r"\[((?:\s*['\"][A-Za-z0-9_-]+['\"]\s*,?)+)\]\.forEach", scripts):
+            for s_id in re.findall(r"['\"]([A-Za-z0-9_-]+)['\"]", arr_m.group(1)):
+                delayed_prefixes.add(s_id)
+        # Keep index 0 of 0-based loop (e.g. c0 at t=0.1s) as upfront if first delay < 0.45s
+        min_trig = min(triggers) if triggers else 0.0
+        if min_trig < 0.45:
+            delayed_prefixes = {p for p in delayed_prefixes if not p.endswith("0")}
+
+    parser = _SceneSyncDOMParser(cls_zero, id_zero, delayed_prefixes)
+    try:
+        parser.feed(txt)
+    except Exception:
+        pass
+
+    def cjk_len(items: list[str]) -> int:
+        return len(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]", "".join(items)))
+
+    upfront_cjk = cjk_len(parser.upfront_texts)
+    total_cjk = cjk_len(parser.all_texts)
+    last_cue_local = round(shot_cues[-1][0] - at, 2) if shot_cues else 0.0
+
+    # Cross-shot cue spoiler check (2-grams exclusive to next shot)
+    curr_grams = extract_cjk_bigrams(" ".join(c[2] for c in shot_cues))
+    next_only_grams = extract_cjk_bigrams(" ".join(c[2] for c in next_cues)) - curr_grams
+    scene_grams = extract_cjk_bigrams(" ".join(parser.all_texts))
+    leaked_next_grams = sorted(scene_grams & next_only_grams)
+
+    hard_issues: list[str] = []
+    warn_issues: list[str] = []
+
+    # Rule 1: Ultra-long static/unsegmented overlay (>7.5s)
+    if track == "overlays" and dur > 7.5 and max_trigger < dur * 0.45:
+        hard_issues.append(
+            f"超长覆盖层挂屏 {dur:.2f}s(>7.5s) 且最大动画触发点仅 {max_trigger:.2f}s，提前剧透后续多句台词（须按句拆分为 <=6.5s 短 Overlay 或按 local_t 分段触发）"
+        )
+
+    # Rule 2: Frame-0 static multi-item text dump on multi-cue shots
+    if dur >= 4.0 and len(shot_cues) >= 2:
+        if len(parser.upfront_texts) >= 5 and upfront_cjk > 32:
+            sample = " / ".join(x[:14] for x in parser.upfront_texts[:4])
+            hard_issues.append(
+                f"t=0 静态裸露文本过多（首 0.4s 即摊牌 {len(parser.upfront_texts)} 处共 {upfront_cjk} 字:「{sample}」），未随本镜 {len(shot_cues)} 句口播渐进揭示，造成严重音画脱节与提前剧透"
+            )
+
+    # Rule 3: Premature animation freeze (finishes in first <42% while speaker keeps talking in second half)
+    has_broll_img = bool(re.search(r"<img\b", txt, flags=re.IGNORECASE))
+    if (
+        track == "main-stage"
+        and dur >= 4.8
+        and len(shot_cues) >= 2
+        and last_cue_local >= 3.0
+        and (not has_broll_img or len(parser.all_texts) >= 5)
+    ):
+        threshold = min(last_cue_local - 1.3, dur * 0.42)
+        if max_trigger < threshold:
+            hard_issues.append(
+                f"动画前半程抢跑死镜（镜长 {dur:.2f}s，末句口播在 local_t={last_cue_local:.2f}s，但代码最大触发点仅 {max_trigger:.2f}s < {threshold:.2f}s），后半程口播时画面静止不同步"
+            )
+
+    # Rule 4: Cross-shot spoiler (showing next shot's exclusive spoken words)
+    if len(leaked_next_grams) >= 3:
+        hard_issues.append(
+            f"跨镜台词错配：本镜({at:.2f}-{end:.2f}s)提前出现了下一镜才说的专属词组({', '.join(leaked_next_grams[:5])})，导致观众眼耳错位"
+        )
+
+    # Rule 5: Excessive non-spoken fabricated prose causing eye-ear conflict
+    if total_cjk > 46 and curr_grams:
+        overlap_ratio = len(scene_grams & curr_grams) / max(1, len(scene_grams))
+        if overlap_ratio < 0.16:
+            warn_issues.append(
+                f"画面总字数偏多({total_cjk}字 > 35字建议上限)且与本镜口播原词重合度低({overlap_ratio:.0%})，疑似生造脑补长词引发眼耳打架"
+            )
+
+    return {
+        "clip_id": clip_id,
+        "scene": scene_path.name,
+        "track": track,
+        "at": round(at, 2),
+        "dur": round(dur, 2),
+        "cue_count": len(shot_cues),
+        "last_cue_local_t": last_cue_local,
+        "upfront_text_nodes": len(parser.upfront_texts),
+        "upfront_chars": upfront_cjk,
+        "deferred_text_nodes": len(parser.deferred_texts),
+        "total_chars": total_cjk,
+        "max_trigger_t": round(max_trigger, 2),
+        "leaked_next_grams": leaked_next_grams,
+        "hard_issues": hard_issues,
+        "warnings": warn_issues,
+    }
+
+
 def inspect_behind_person_scene(scene_path: Path) -> dict[str, Any]:
     """Analyze a scene HTML placed behind a --of-cutout: 1 speaker for occludable text/info."""
     info: dict[str, Any] = {
@@ -479,6 +816,7 @@ def render_safezone_overlays(
     out_dir: Path,
     cut_points: list[float] | None = None,
     cutout_sticker_points: list[float] | None = None,
+    pip_points: list[float] | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     # 1080x1920 3-platform UI forbidden zones:
@@ -673,6 +1011,57 @@ def render_safezone_overlays(
             result["safezone_cutouts"] = rel_path(cs_path)
             result["cutout_sticker_timestamps_sec"] = picked_cs
 
+    # Speaker-PiP 1:1 top-region close-up inspection sheet (safezone-pip.png)
+    raw_pip = sorted({round(t, 2) for t in (pip_points or []) if 0.05 < t < (duration - 0.05)})
+    if raw_pip:
+        if len(raw_pip) > 6:
+            step = (len(raw_pip) - 1) / 5.0
+            picked_pip = [raw_pip[int(round(i * step))] for i in range(6)]
+        else:
+            picked_pip = raw_pip
+        pip_path = out_dir / "safezone-pip.png"
+        cmd_pip = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        f_pip_parts: list[str] = []
+        for idx, tt in enumerate(picked_pip):
+            cmd_pip += ["-ss", f"{tt:.2f}", "-i", str(video)]
+            f_pip_parts.append(
+                f"[{idx}:v]scale=1080:1920,crop=1080:560:0:130,"
+                f"drawbox=x=0:y=50:w=1080:h=2:color=red@0.85:t=fill,"
+                f"scale=720:374[pp{idx}]"
+            )
+        npip = len(picked_pip)
+        if npip == 1:
+            pip_map = "[pp0]"
+        elif npip == 2:
+            f_pip_parts.append("[pp0][pp1]hstack=inputs=2[pip_out]")
+            pip_map = "[pip_out]"
+        else:
+            cols = 2
+            pad_n = (cols - (npip % cols)) % cols
+            for p_i in range(pad_n):
+                f_pip_parts.append(f"color=c=black:s=720x374:d=1[ppp{p_i}]")
+            all_pp = [f"[pp{i}]" for i in range(npip)] + [f"[ppp{p_i}]" for p_i in range(pad_n)]
+            rows = []
+            for r_i in range(0, len(all_pp), 2):
+                rlbl = f"ppr{r_i // 2}"
+                f_pip_parts.append(f"{all_pp[r_i]}{all_pp[r_i + 1]}hstack=inputs=2[{rlbl}]")
+                rows.append(f"[{rlbl}]")
+            f_pip_parts.append(f"{''.join(rows)}vstack=inputs={len(rows)}[pip_out]")
+            pip_map = "[pip_out]"
+        cmd_pip += [
+            "-filter_complex",
+            ";".join(f_pip_parts),
+            "-map",
+            pip_map,
+            "-frames:v",
+            "1",
+            str(pip_path),
+        ]
+        proc5 = run_cmd(cmd_pip)
+        if proc5.returncode == 0:
+            result["safezone_pip"] = rel_path(pip_path)
+            result["pip_timestamps_sec"] = picked_pip
+
     return result
 
 
@@ -688,10 +1077,11 @@ def audit_film_dir(
     style_slot: str,
     hard_failures: list[str],
     warnings: list[str],
-) -> tuple[dict[str, Any], list[float], list[float]]:
+) -> tuple[dict[str, Any], list[float], list[float], list[float]]:
     details: dict[str, Any] = {"style_slot": style_slot}
     cut_points: list[float] = []
     cutout_sticker_points: list[float] = []
+    pip_points: list[float] = []
     film_html = film_dir / "film.html"
     if film_html.exists():
         html_txt = film_html.read_text(encoding="utf-8", errors="replace")
@@ -738,8 +1128,14 @@ def audit_film_dir(
             html_txt,
             flags=re.IGNORECASE | re.DOTALL,
         )
+        overlay_sec = re.search(
+            r'<section[^>]*id=["\']overlays["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
         main_clips = parse_clips_in_section(main_sec.group(1)) if main_sec else []
         pip_clips = parse_clips_in_section(pip_sec.group(1)) if pip_sec else []
+        overlay_clips = parse_clips_in_section(overlay_sec.group(1)) if overlay_sec else []
 
         cutout_clips: list[dict[str, Any]] = []
         for cm in re.finditer(
@@ -757,10 +1153,18 @@ def audit_film_dir(
         ):
             sticker_clips.extend(parse_clips_in_section(sm.group(1)))
 
-        # Parse <style> CSS blocks so class-defined top/height/translateY/--of-cutout are respected
+        # Parse <style> CSS blocks & @keyframes so class-defined top/height/clip-path/--of-cutout are respected
         css_class_rules: dict[str, str] = {}
+        keyframes_map: dict[str, str] = {}
         for style_blk in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", html_txt, flags=re.IGNORECASE):
-            for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", style_blk):
+            keyframes_map.update(extract_keyframes_blocks(style_blk))
+            style_no_kf = re.sub(
+                r"@keyframes\s+[A-Za-z0-9_-]+\s*\{(?:[^{}]|\{[^{}]*\})*\}",
+                "",
+                style_blk,
+                flags=re.IGNORECASE,
+            )
+            for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", style_no_kf):
                 css_class_rules[cm.group(1)] = css_class_rules.get(cm.group(1), "") + ";" + cm.group(2)
 
         # Identify speaker source video basenames (dominant video + pip/cutout videos)
@@ -827,27 +1231,125 @@ def audit_film_dir(
                                 f"film.html 跨轨叠影穿帮风险：上轨 `{pc['id']}` 结束于 {pc['end']:.6f}s 与下轨全屏 `{fv['id']}` 起点 {fv['at']:.2f}s 重叠/浮点贴边（Δ={overlap_ms:+.2f}ms），易导致 1 帧双人头重影；请将上轨提前 >=0.034s 收口或改做显式转场"
                             )
 
-        # 4. Check wide PiP with horizontal object-position & PiP height drift
+        # 4. Check speaker-pip face/mouth/chin vertical retention (v1/v2), background wall exposure, .pip-frame match & height drift
         pip_heights: set[int] = set()
-        for m in re.finditer(
-            r"<video\b[^>]*pip[^>]*style=[\"']([^\"']+)[\"']",
-            html_txt,
-            flags=re.IGNORECASE,
-        ):
-            st = m.group(1)
-            wm = re.search(r"width:\s*(\d+)px", st)
-            hm = re.search(r"height:\s*(\d+)px", st)
-            if wm and hm:
-                w, h = int(wm.group(1)), int(hm.group(1))
-                pip_heights.add(h)
-                if h > 0 and (w / h) > 1.85 and "wide_pip_warned" not in details:
-                    details["wide_pip_warned"] = True
-                    warnings.append(
-                        f"PiP 窗口 {w}x{h} (宽高比 {w/h:.2f} > 1.85) 套用 16:9 原片时横向 object-position 无效，易露出右侧大片空墙，建议内层容器 scale+translateX 居中"
-                    )
+        pip_reports: list[dict[str, Any]] = []
+        src_ar_cache: dict[str, float] = {}
+        for pc in pip_clips:
+            pc_end = pc["end"] if pc["end"] is not None else min(duration, pc["at"] + 4.0)
+            pip_points.append(round((pc["at"] + pc_end) / 2.0, 2))
+            merged_pip_css = ";".join(
+                [css_class_rules.get(cls, "") for cls in pc.get("classes", [])] + [pc.get("style", "")]
+            )
+            box_l = parse_css_px(merged_pip_css, "left", 0.0) or 0.0
+            box_t = parse_css_px(merged_pip_css, "top", 0.0) or 0.0
+            box_w = parse_css_px(merged_pip_css, "width", 1080.0) or 1080.0
+            box_h = parse_css_px(merged_pip_css, "height", 1920.0) or 1920.0
+            ins_t, ins_r, ins_b, ins_l = resolve_pip_steady_inset(
+                merged_pip_css, keyframes_map, box_w, box_h
+            )
+            vis_l = box_l + ins_l
+            vis_t = box_t + ins_t
+            vis_w = max(1.0, box_w - ins_l - ins_r)
+            vis_h = max(1.0, box_h - ins_t - ins_b)
+            pip_heights.add(int(round(vis_h)))
+
+            # Probe source video aspect ratio (default 16:9)
+            src_rel = pc["base_src"]
+            if src_rel not in src_ar_cache:
+                src_file = film_dir / src_rel
+                ar_val = 16.0 / 9.0
+                if src_file.is_file():
+                    try:
+                        sp_info = ffprobe_json(src_file)
+                        vs = next(
+                            (s for s in sp_info.get("streams", []) if s.get("codec_type") == "video"),
+                            None,
+                        )
+                        if vs and int(vs.get("height", 0)) > 0:
+                            ar_val = int(vs["width"]) / int(vs["height"])
+                    except Exception:
+                        pass
+                src_ar_cache[src_rel] = ar_val
+            src_ar = src_ar_cache[src_rel]
+
+            pos_m = re.search(
+                r"object-position\s*:\s*(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%",
+                merged_pip_css,
+                flags=re.IGNORECASE,
+            )
+            pos_x = float(pos_m.group(1)) if pos_m else 50.0
+            pos_y = float(pos_m.group(2)) if pos_m else 50.0
+            if (box_w / box_h) >= src_ar:
+                rw, rh = box_w, box_w / src_ar
+                ox, oy = 0.0, (rh - box_h) * (pos_y / 100.0)
+            else:
+                rh, rw = box_h, box_h * src_ar
+                ox, oy = (rw - box_w) * (pos_x / 100.0), 0.0
+
+            u1 = max(0.0, min(1.0, (ox + ins_l) / max(1.0, rw)))
+            u2 = max(0.0, min(1.0, (ox + box_w - ins_r) / max(1.0, rw)))
+            v1 = max(0.0, min(1.0, (oy + ins_t) / max(1.0, rh)))
+            v2 = max(0.0, min(1.0, (oy + box_h - ins_b) / max(1.0, rh)))
+
+            pip_issues: list[str] = []
+            if v2 < 0.72:
+                pip_issues.append(
+                    f"纵向底部裁切过重(仅保留至源片高度 v2={v2:.1%} < 72%，可见框底边 y={vis_t+vis_h:.0f}px)，严重截断说话人嘴巴/下巴"
+                )
+            if v1 > 0.22:
+                pip_issues.append(
+                    f"纵向顶部裁切过重(起点 v1={v1:.1%} > 22%)，存在削人物头顶穿帮风险"
+                )
+            if vis_h < 320.0:
+                pip_issues.append(
+                    f"可见窗口净高过矮({vis_h:.0f}px < 320px)，无法完整容纳头肩五官"
+                )
+
+            # Check .pip-frame alignment inside overlapping main-stage scene
+            for mc in main_clips:
+                if mc["tag"] != "iframe":
+                    continue
+                mc_end = mc["end"] if mc["end"] is not None else duration
+                if mc["at"] < pc_end - 0.05 and mc_end > pc["at"] + 0.05:
+                    sf_path = film_dir / mc["base_src"]
+                    if sf_path.is_file():
+                        sf_txt = sf_path.read_text(encoding="utf-8", errors="replace")
+                        pf_m = re.search(r"\.pip-frame\s*\{([^}]*)\}", sf_txt, flags=re.IGNORECASE)
+                        if pf_m and "pip-frame" in sf_txt[sf_txt.find("<body") :]:
+                            pf_css = pf_m.group(1)
+                            pf_t = parse_css_px(pf_css, "top")
+                            pf_h = parse_css_px(pf_css, "height")
+                            if pf_t is not None and pf_h is not None:
+                                if abs((pf_t + pf_h) - (vis_t + vis_h)) > 16.0 or abs(pf_t - vis_t) > 16.0:
+                                    pip_issues.append(
+                                        f"与场景 `{sf_path.name}` 内 `.pip-frame`(y={pf_t:.0f}..{pf_t+pf_h:.0f}px) 和视频可见框(y={vis_t:.0f}..{vis_t+vis_h:.0f}px) 错位 >16px"
+                                    )
+
+            if (vis_w / vis_h) > 1.85 and u2 > 0.64 and "wide_pip_warned" not in details:
+                details["wide_pip_warned"] = True
+                warnings.append(
+                    f"speaker-pip `{pc['id']}` 可见窗口 {vis_w:.0f}x{vis_h:.0f}(宽高比 {vis_w/vis_h:.2f} > 1.85) 仍保留源片右侧 u2={u2:.1%}(>64%)，若原片右侧有灰墙/杂物将直接穿帮；建议改用 4:3 / 16:10 居中紧凑人像窗并控 u2<=58%"
+                )
+
+            if pip_issues:
+                hard_failures.append(
+                    f"speaker-pip `{pc['id']}` (at={pc['at']:.2f}s) 违反画中画五官完整保留硬规：{'；'.join(pip_issues)}。请缩小 <video> 尺寸或调整 clip-path，确保 v1<=22% 且 v2>=74%（完整保留头顶至嘴巴、下巴与领口）"
+                )
+            pip_reports.append(
+                {
+                    "id": pc["id"],
+                    "at": pc["at"],
+                    "visible_box": [round(vis_l), round(vis_t), round(vis_w), round(vis_h)],
+                    "source_uv": [round(u1, 3), round(u2, 3), round(v1, 3), round(v2, 3)],
+                    "violations": pip_issues,
+                }
+            )
+        if pip_reports:
+            details["pip_framing_checks"] = pip_reports
         if len(pip_heights) >= 3:
             warnings.append(
-                f"同一成片内 PiP 窗口出现 {len(pip_heights)} 种不同高度 ({sorted(pip_heights)}px)，易造成切镜框体抽搐跳动，建议锁定统一 PiP 基线尺寸"
+                f"同一成片内 PiP 可见窗口出现 {len(pip_heights)} 种不同高度 ({sorted(pip_heights)}px)，易造成切镜框体抽搐跳动，建议锁定统一 PiP 基线尺寸"
             )
 
         # 4b. Check cutout-fg behind-person occlusion & collect inspection midpoints
@@ -1225,7 +1727,54 @@ def audit_film_dir(
                 f"电影沉浸槽位(v3)检测到伪监视器套壳 HUD（REC/SPEAKER CAM: {', '.join(fake_rec_files[:4])}），建议移除并改用动态宽银幕遮幅与光学景深"
             )
 
-    return details, cut_points, cutout_sticker_points
+        # 7. Audio-visual & spoken-text synchronization audit across main-stage and overlays
+        parsed_cues_sync: list[tuple[float, float, str]] = []
+        if sub_file.exists():
+            sub_raw = sub_file.read_text(encoding="utf-8", errors="replace")
+            for cm in re.findall(
+                r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*([\"'])(.*?)\3",
+                sub_raw,
+            ):
+                parsed_cues_sync.append((float(cm[0]), float(cm[1]), strip_html(cm[3])))
+
+        if parsed_cues_sync and film_html.exists():
+            sync_reports: list[dict[str, Any]] = []
+            all_timed_iframes = [
+                ("main-stage", c) for c in main_clips if c["tag"] == "iframe"
+            ] + [("overlays", c) for c in overlay_clips if c["tag"] == "iframe"]
+            for trk_name, ic in all_timed_iframes:
+                sf_path = film_dir / ic["base_src"]
+                if not sf_path.is_file():
+                    continue
+                if helper_scene_re.match(sf_path.name) or re.search(
+                    r"(?:outro|ending)", sf_path.name, flags=re.IGNORECASE
+                ):
+                    continue
+                c_dur = ic["dur"] if ic["dur"] is not None else max(0.0, duration - ic["at"])
+                if c_dur < 3.2:
+                    continue
+                rep = analyze_scene_sync(
+                    sf_path, ic["id"], trk_name, ic["at"], c_dur, parsed_cues_sync
+                )
+                sync_reports.append(rep)
+                for hi in rep["hard_issues"]:
+                    hard_failures.append(
+                        f"音画同步违规 `{ic['id']}` ({sf_path.name}, at={ic['at']:.2f}s): {hi}"
+                    )
+                for wi in rep["warnings"]:
+                    warnings.append(
+                        f"音画可读性提示 `{ic['id']}` ({sf_path.name}, at={ic['at']:.2f}s): {wi}"
+                    )
+            if sync_reports:
+                details["sync_checks"] = {
+                    "scenes_audited": len(sync_reports),
+                    "violating_scenes": [
+                        r["scene"] for r in sync_reports if r["hard_issues"]
+                    ],
+                    "reports": sync_reports,
+                }
+
+    return details, cut_points, cutout_sticker_points, pip_points
 
 
 def audit_publish_json(
@@ -1331,8 +1880,9 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
     film_checks: dict[str, Any] = {}
     cut_points: list[float] = []
     cutout_sticker_points: list[float] = []
+    pip_points: list[float] = []
     if film_dir:
-        film_checks, cut_points, cutout_sticker_points = audit_film_dir(
+        film_checks, cut_points, cutout_sticker_points, pip_points = audit_film_dir(
             film_dir, duration, style_slot, hard_failures, warnings
         )
 
@@ -1344,6 +1894,7 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
             Path(args.out_dir),
             cut_points=cut_points,
             cutout_sticker_points=cutout_sticker_points,
+            pip_points=pip_points,
         )
 
     pub_checks: dict[str, Any] = {}
