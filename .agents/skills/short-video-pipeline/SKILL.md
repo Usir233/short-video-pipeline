@@ -270,7 +270,10 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
   - 峰值极热/削波音效（如 `-7 LUFS`）须大幅压低（如 `0.06–0.08`），避免气口刺耳；短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾，转场 whoosh 优先选有效长 `≤0.45s` 防拖尾压字，不同类型音效分放不同 `<section>` 防重叠，点缀 SFX 密度控制在 **`≤ 1 次/5s`**；长片（`>60s`）母带动态保持 `LRA ≥ 4.0 LU` 避免过度砖墙限幅疲劳。
 - **首尾气口与完整收尾硬约定（杜绝残句开篇、半句截断与无结尾感）**：独立成片与切片首句前 `0.8s` 内严禁残留无前文废语（「像我刚刚讲的」「反而是」「那这个」等）；末句必须落在**完整语义句号/明确结论点**上（严禁截断在转折词/引子/破折号半句上或切入下句起音，末句人声加 `30–50ms` 微淡出）；末段须具备清晰视觉收尾落版（最后核心信息停留可读 `≥1.5s`），并在末句落音后留约 `0.6–1.2s` 视觉余韵配合 BGM 自然淡出（片尾最后 `0.35s` 不得存在 `> -25 LUFS` 的未落音截断人声）。
 - 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
-- 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`；多片连续批产或高负载机器建议加 `--workers 2` 并错峰渲染以防过热与 4K 解码超时）。每次都带 `--out`，不用默认的导出位置。
+- 渲染与满血硬件加速：
+  - 若源口播视频高于 `1440p`（如 4K `3840×2160`）或关键帧间隔 `> 0.5s`，送入 `film/assets/`（或入口 E 的 `master-assets/clips/`）前先用显卡硬解硬编一次性转出 **快解工作母版**：`ffmpeg -hwaccel cuda -i <源片> -vf "scale=-2:1440" -c:v h264_nvenc -preset p5 -cq 18 -g 8 -c:a copy <目标母片.mp4>`（无 NVIDIA 独显时降级 `-c:v libx264 -preset superfast -crf 16 -g 8`）。`2560×1440` 对竖屏 `1080×1920`（含跳切推镜）无损，且 `-g 8`（`0.26s` 关键帧）可直接命中 OpenFilm `≤0.5s` 快解免检线，省去浏览器硬啃 4K 与各片重复生成 `.film/cache/seek/` 缓存的开销。
+  - `--of-cutout: 1`（AI 实时人物抠像）仅在需要「人后立大字 / 电影浅景深虚化」的高潮短镜头（单段控 `≤4.2s`）按需开启，普通全屏口播与顶部常规 PiP 小窗严禁全程常驻挂 `--of-cutout: 1`。
+  - 渲染命令：`openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`：**单条独立渲染统一用 `--workers 6`**；2 条子片同跑各配 `--workers 4`；3 条子片同时并行渲染按 `3 / 3 / 2` 分配 `--workers`，确保全机并发 `h264_nvenc` 硬编会话总数 `≤ 8 路` 吃满显卡且不超限回退软编；仅无独显或内存 `<16GB` 机器降回 `--workers 2`）。每次都带 `--out`，不用默认的导出位置。
 
 出片前自检，全部通过才能进入发布：
 

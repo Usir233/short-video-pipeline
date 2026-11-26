@@ -95,7 +95,8 @@ const easeInOutSine = (x) => -(Math.cos(Math.PI * clamp(x)) - 1) / 2;
   }
   .whip-vid { filter: blur(var(--fx-blur, 0px)) brightness(var(--fx-brightness, 100%)); }
   ```
-- **人后巨字 / 电影浅景深背景分离（`--of-cutout: 1`）**：
+- **人后巨字 / 电影浅景深背景分离（`--of-cutout: 1`，按需克制开启防空耗算力）**：
+  - **禁止全片常驻抠像**：普通全屏口播与顶部常规 PiP 小窗直接走原视频层，**严禁**无意义常驻挂载 `--of-cutout: 1`；仅在需要「人后立大字」或「电影浅景深虚化」的重点高潮镜头（单段控 `≤ 4.2s`）按需开启，省去无效逐帧 AI 分割开销；
   - **人后巨字（终局/金句爆点，须严守§二.7 防遮挡铁律）**：底层 `<section>` 仅放位于 **`y = 260..540px` 的 2–4 字超大单行短词**或纯氛围光效，上层 `<section id="cutout-fg">` 放同源 `<video style="--of-cutout: 1; --of-cutout-mode: 1; --of-cutout-edge: 0.25; --of-cutout-despill: 0.35">` 并**缩小下沉为中景胸像使头顶 `y ≥ 640px`**（最多发梢微压文字下沿 ≤15%；长句、副标题与精细 SVG 图表须放在人物上层 `overlays` 下方暗化区或切全屏展示，严禁藏于头后）；
   - **电影浅景深（去平亮办公墙）**：底层放同源 `<video style="filter: blur(7px) brightness(0.60) saturate(0.75)">`，上层叠 `--of-cutout: 1` 清晰前景人物；可叠加 `--of-lut: url(looks/cinema.cube)` 做冷暗部/暖肤色分离（如戴眼镜开启美颜须加 `--of-beauty-protect-glasses: 1`）。
 - **跨轨空间形变转场（全屏 ↔ PiP `clip-path` Morph）与叠化**：
