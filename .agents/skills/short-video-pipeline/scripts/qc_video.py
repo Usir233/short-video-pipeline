@@ -12,7 +12,13 @@ Subcommands:
                   marking Top 180px, Bottom 360px, Right button bar x=930..1080 y=850..1500,
                   and chin reference line y=1120
                 - Cut-point frame-burst verification (safezone-cuts.png: t-1f / t / t+1f)
-                - Editing & VFX craft checks: ASL/shot pacing, cross-track floating-point
+                - Cutout & sticker occlusion sheet (safezone-cutouts.png: midpoint frames
+                  of every --of-cutout:1 and sticker shot with head/face protection guide)
+                - Editing & VFX craft checks: ASL/shot pacing, single-use visual asset
+                  enforcement (count == 1 per video), visual information density
+                  (text-only card ratio <= 25%, semantic SVG/Canvas motion >= 45%,
+                  static B-roll SVG foreground check), cutout behind-person text occlusion
+                  & sticker head/face overlap checks, cross-track floating-point
                   double-head overlap, continuous-shot scale snap-back, ghost-spoiler
                   opacity, static line-through, fake REC HUD, BGM hard splice, SFX density
                 - Static subtitles.html lag-bug/opening/ending & publish.json gates
@@ -287,12 +293,14 @@ def cmd_probe_audio(args: argparse.Namespace) -> int:
 
 def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
     clips: list[dict[str, Any]] = []
-    for m in re.finditer(r"<(video|iframe)\b([^>]*)>", section_html, flags=re.IGNORECASE):
+    for m in re.finditer(r"<(video|iframe|img)\b([^>]*)>", section_html, flags=re.IGNORECASE):
         tag = m.group(1).lower()
         attrs = m.group(2)
         src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
         at_m = re.search(r'\bat=["\'](\d+(?:\.\d+)?)["\']', attrs)
+        dur_m = re.search(r'\bdur=["\'](\d+(?:\.\d+)?)["\']', attrs)
         id_m = re.search(r'\bid=["\']([^"\']+)["\']', attrs)
+        cls_m = re.search(r'\bclass=["\']([^"\']+)["\']', attrs)
         style_m = re.search(r'style=["\']([^"\']+)["\']', attrs)
         if not src_m:
             continue
@@ -305,7 +313,9 @@ def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
         if tm:
             t_in = float(tm.group(1))
             t_out = float(tm.group(2)) if tm.group(2) else None
-        dur = (t_out - t_in) if (t_in is not None and t_out is not None) else None
+        dur = (t_out - t_in) if (t_in is not None and t_out is not None) else (
+            float(dur_m.group(1)) if dur_m else None
+        )
         end_val = (at_val + dur) if dur is not None else None
         anim_name = None
         if style_m:
@@ -316,6 +326,7 @@ def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
             {
                 "tag": tag,
                 "id": id_m.group(1) if id_m else base_src,
+                "classes": cls_m.group(1).split() if cls_m else [],
                 "base_src": base_src,
                 "at": at_val,
                 "t_in": t_in,
@@ -327,6 +338,124 @@ def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
             }
         )
     return clips
+
+
+def parse_css_px(style: str, prop: str, default: float | None = None) -> float | None:
+    m = re.search(rf"(?:^|[;\s]){re.escape(prop)}\s*:\s*(-?\d+(?:\.\d+)?)px", style, flags=re.IGNORECASE)
+    return float(m.group(1)) if m else default
+
+
+def inspect_behind_person_scene(scene_path: Path) -> dict[str, Any]:
+    """Analyze a scene HTML placed behind a --of-cutout: 1 speaker for occludable text/info."""
+    info: dict[str, Any] = {
+        "scene": scene_path.name,
+        "svg_texts": [],
+        "html_texts": [],
+        "too_low_texts": [],
+        "long_texts": [],
+        "has_behind_text": False,
+    }
+    if not scene_path.is_file():
+        return info
+    txt = scene_path.read_text(encoding="utf-8", errors="replace")
+
+    # Parse <style> CSS class rules inside the scene HTML
+    cls_css: dict[str, str] = {}
+    for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", txt, flags=re.IGNORECASE):
+        for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb):
+            cls_css[cm.group(1)] = cls_css.get(cm.group(1), "") + ";" + cm.group(2)
+
+    def resolve_css(attrs: str) -> str:
+        parts: list[str] = []
+        cm = re.search(r'\bclass=["\']([^"\']+)["\']', attrs, flags=re.IGNORECASE)
+        if cm:
+            for c in cm.group(1).split():
+                if c in cls_css:
+                    parts.append(cls_css[c])
+        sm = re.search(r'\bstyle=["\']([^"\']+)["\']', attrs, flags=re.IGNORECASE)
+        if sm:
+            parts.append(sm.group(1))
+        return ";".join(parts)
+
+    # 1. Inspect SVG <text ... y="...">...</text>
+    for m in re.finditer(r"<text\b([^>]*)>([\s\S]*?)</text>", txt, flags=re.IGNORECASE):
+        attrs, inner = m.group(1), m.group(2)
+        clean = strip_html(inner)
+        if not clean:
+            continue
+        ym = re.search(r'\by=["\'](-?\d+(?:\.\d+)?)["\']', attrs)
+        y_val = float(ym.group(1)) if ym else 500.0
+        char_len = len(re.sub(r"\s+", "", clean))
+        item = {"y": y_val, "text": clean, "chars": char_len}
+        info["svg_texts"].append(item)
+        if y_val > 540.0:
+            info["too_low_texts"].append(item)
+        if char_len > 6:
+            info["long_texts"].append(item)
+
+    # 2. Inspect non-pill HTML text blocks (supporting both inline style and CSS class top/font-size)
+    body_m = re.search(r"<body\b[^>]*>([\s\S]*?)</body>", txt, flags=re.IGNORECASE)
+    body_html = body_m.group(1) if body_m else txt
+    body_no_noise = re.sub(r"<(script|style|svg)\b[\s\S]*?</\1>", "", body_html, flags=re.IGNORECASE)
+    # Remove single-level top pill / eyebrow badges (top < 230px with small font <= 36px)
+    pill_cls_re = re.compile(r"\b(?:pill|top-pill|top-tag|cap|eyebrow|badge)\b", flags=re.IGNORECASE)
+
+    # Match positioned or text-bearing container elements (including nested .l1/.l2/.g1/.g2 lines)
+    for m in re.finditer(
+        r"<(div|h[1-6]|p)\b([^>]*)>([\s\S]*?)</\1>",
+        body_no_noise,
+        flags=re.IGNORECASE,
+    ):
+        attrs, inner = m.group(2), m.group(3)
+        css = resolve_css(attrs)
+        top_val = parse_css_px(css, "top")
+        fs_val = parse_css_px(css, "font-size")
+        cls_m = re.search(r'\bclass=["\']([^"\']+)["\']', attrs, flags=re.IGNORECASE)
+        cls_str = cls_m.group(1) if cls_m else ""
+        # Skip wrapper containers like .stage that have no top/font-size of their own
+        if top_val is None and fs_val is None:
+            continue
+        # Skip small top eyebrow pills (top < 230px and font-size <= 38px)
+        if (top_val is not None and top_val < 230.0) and (fs_val is None or fs_val <= 38.0):
+            continue
+        if pill_cls_re.search(cls_str) and (fs_val is None or fs_val <= 38.0):
+            continue
+
+        # Extract sub-lines if child divs exist (e.g. <div class="l1">...</div><div class="l2">...</div>)
+        sub_divs = re.findall(r"<(div|span|p)\b([^>]*)>([\s\S]*?)</\1>", inner, flags=re.IGNORECASE)
+        lines: list[tuple[float, str]] = []
+        base_top = top_val if top_val is not None else 450.0
+        if sub_divs:
+            cur_y = base_top
+            for _, s_attrs, s_inner in sub_divs:
+                s_clean = strip_html(s_inner)
+                if not s_clean:
+                    continue
+                s_css = resolve_css(s_attrs)
+                s_fs = parse_css_px(s_css, "font-size", fs_val or 64.0) or 64.0
+                lines.append((cur_y + s_fs * 0.85, s_clean))
+                cur_y += s_fs * 1.15
+        else:
+            clean = strip_html(inner)
+            if clean:
+                eff_fs = fs_val or 48.0
+                lines.append((base_top + eff_fs * 0.85, clean))
+
+        for line_y, line_txt in lines:
+            if any(x["text"] == line_txt for x in info["html_texts"]):
+                continue
+            char_len = len(re.sub(r"\s+", "", line_txt))
+            item = {"y": round(line_y, 1), "text": line_txt[:40], "chars": char_len}
+            info["html_texts"].append(item)
+            if line_y > 540.0:
+                info["too_low_texts"].append(item)
+            if char_len > 6:
+                info["long_texts"].append(item)
+
+    all_behind = [x for x in info["svg_texts"] if x["y"] >= 240.0] + info["html_texts"]
+    info["has_behind_text"] = len(all_behind) > 0
+    info["behind_text_count"] = len(all_behind)
+    return info
 
 
 def detect_style_slot(video: Path, film_dir: Path | None, explicit: str | None) -> str:
@@ -345,7 +474,11 @@ def detect_style_slot(video: Path, film_dir: Path | None, explicit: str | None) 
 
 
 def render_safezone_overlays(
-    video: Path, duration: float, out_dir: Path, cut_points: list[float] | None = None
+    video: Path,
+    duration: float,
+    out_dir: Path,
+    cut_points: list[float] | None = None,
+    cutout_sticker_points: list[float] | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     # 1080x1920 3-platform UI forbidden zones:
@@ -477,6 +610,69 @@ def render_safezone_overlays(
             result["safezone_cuts"] = rel_path(cuts_path)
             result["cut_burst_timestamps_sec"] = [round(c, 3) for c in picked]
 
+    # Cutout & sticker midpoint inspection sheet (safezone-cutouts.png) with magenta head-zone guide
+    raw_cs = sorted({round(t, 2) for t in (cutout_sticker_points or []) if 0.05 < t < (duration - 0.05)})
+    # Deduplicate timestamps within 1.2s (keeps the later timestamp so overlapping cutout+sticker show together)
+    valid_cs: list[float] = []
+    for t in raw_cs:
+        if valid_cs and (t - valid_cs[-1]) < 1.2:
+            valid_cs[-1] = t
+        else:
+            valid_cs.append(t)
+    if valid_cs:
+        if len(valid_cs) > 6:
+            step = (len(valid_cs) - 1) / 5.0
+            picked_cs = [valid_cs[int(round(i * step))] for i in range(6)]
+        else:
+            picked_cs = valid_cs
+        cs_path = out_dir / "safezone-cutouts.png"
+        head_box_filter = (
+            box_filter
+            + ",drawbox=x=220:y=280:w=640:h=740:color=magenta@0.80:t=4"
+            + ",drawbox=x=0:y=640:w=1080:h=2:color=yellow@0.70:t=fill"
+        )
+        cmd_cs = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+        f_cs_parts: list[str] = []
+        for idx, tt in enumerate(picked_cs):
+            cmd_cs += ["-ss", f"{tt:.2f}", "-i", str(video)]
+            f_cs_parts.append(
+                f"[{idx}:v]scale=1080:1920,{head_box_filter},scale=360:640[cs{idx}]"
+            )
+        n = len(picked_cs)
+        if n <= 3:
+            if n == 1:
+                cs_map = "[cs0]"
+            else:
+                f_cs_parts.append(
+                    f"{''.join(f'[cs{i}]' for i in range(n))}hstack=inputs={n}[cs_out]"
+                )
+                cs_map = "[cs_out]"
+        else:
+            cols = 3
+            pad_n = (cols - (n % cols)) % cols
+            for p_i in range(pad_n):
+                f_cs_parts.append(f"color=c=black:s=360x640:d=1[csp{p_i}]")
+            all_lbls = [f"[cs{i}]" for i in range(n)] + [f"[csp{p_i}]" for p_i in range(pad_n)]
+            r1 = "".join(all_lbls[:3])
+            r2 = "".join(all_lbls[3:6])
+            f_cs_parts.append(f"{r1}hstack=inputs=3[csr1]")
+            f_cs_parts.append(f"{r2}hstack=inputs=3[csr2]")
+            f_cs_parts.append("[csr1][csr2]vstack=inputs=2[cs_out]")
+            cs_map = "[cs_out]"
+        cmd_cs += [
+            "-filter_complex",
+            ";".join(f_cs_parts),
+            "-map",
+            cs_map,
+            "-frames:v",
+            "1",
+            str(cs_path),
+        ]
+        proc4 = run_cmd(cmd_cs)
+        if proc4.returncode == 0:
+            result["safezone_cutouts"] = rel_path(cs_path)
+            result["cutout_sticker_timestamps_sec"] = picked_cs
+
     return result
 
 
@@ -492,9 +688,10 @@ def audit_film_dir(
     style_slot: str,
     hard_failures: list[str],
     warnings: list[str],
-) -> tuple[dict[str, Any], list[float]]:
+) -> tuple[dict[str, Any], list[float], list[float]]:
     details: dict[str, Any] = {"style_slot": style_slot}
     cut_points: list[float] = []
+    cutout_sticker_points: list[float] = []
     film_html = film_dir / "film.html"
     if film_html.exists():
         html_txt = film_html.read_text(encoding="utf-8", errors="replace")
@@ -530,7 +727,7 @@ def audit_film_dir(
                 f"点缀/转场音效共 {sfx_count} 次（{duration:.1f}s 内平均每 {duration/sfx_count:.1f}s 一次），高于 <=1次/5s 建议红线，易显得嘈杂"
             )
 
-        # 3. Parse main-stage & speaker-pip for ASL, cross-track floating-point overlap, and scale snap-back
+        # 3. Parse main-stage, speaker-pip, cutout-fg, and stickers
         main_sec = re.search(
             r'<section[^>]*id=["\']main-stage["\'][^>]*>(.*?)</section>',
             html_txt,
@@ -543,6 +740,45 @@ def audit_film_dir(
         )
         main_clips = parse_clips_in_section(main_sec.group(1)) if main_sec else []
         pip_clips = parse_clips_in_section(pip_sec.group(1)) if pip_sec else []
+
+        cutout_clips: list[dict[str, Any]] = []
+        for cm in re.finditer(
+            r'<section[^>]*id=["\'][^"\']*cutout[^"\']*["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            cutout_clips.extend(parse_clips_in_section(cm.group(1)))
+
+        sticker_clips: list[dict[str, Any]] = []
+        for sm in re.finditer(
+            r'<section[^>]*id=["\'][^"\']*sticker[^"\']*["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            sticker_clips.extend(parse_clips_in_section(sm.group(1)))
+
+        # Parse <style> CSS blocks so class-defined top/height/translateY/--of-cutout are respected
+        css_class_rules: dict[str, str] = {}
+        for style_blk in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", html_txt, flags=re.IGNORECASE):
+            for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", style_blk):
+                css_class_rules[cm.group(1)] = css_class_rules.get(cm.group(1), "") + ";" + cm.group(2)
+
+        # Identify speaker source video basenames (dominant video + pip/cutout videos)
+        all_video_refs = re.findall(
+            r'<video\b[^>]*src=["\']([^"\']+\.(?:mp4|mov|webm|mkv))(?:#[^"\']*)?["\']',
+            html_txt,
+            flags=re.IGNORECASE,
+        )
+        vid_freq_early: dict[str, int] = {}
+        for vr in all_video_refs:
+            bn = Path(vr).name.lower()
+            vid_freq_early[bn] = vid_freq_early.get(bn, 0) + 1
+        speaker_vids_early: set[str] = set()
+        if vid_freq_early:
+            speaker_vids_early.add(max(vid_freq_early, key=vid_freq_early.get))
+        for c in pip_clips + cutout_clips:
+            if c["tag"] == "video":
+                speaker_vids_early.add(Path(c["base_src"]).name.lower())
 
         if main_clips:
             main_clips.sort(key=lambda c: c["at"])
@@ -614,6 +850,156 @@ def audit_film_dir(
                 f"同一成片内 PiP 窗口出现 {len(pip_heights)} 种不同高度 ({sorted(pip_heights)}px)，易造成切镜框体抽搐跳动，建议锁定统一 PiP 基线尺寸"
             )
 
+        # 4b. Check cutout-fg behind-person occlusion & collect inspection midpoints
+        cutout_reports: list[dict[str, Any]] = []
+        cutout_meta: list[dict[str, Any]] = []
+        for cc in cutout_clips:
+            merged_css = ";".join(
+                [css_class_rules.get(cls, "") for cls in cc.get("classes", [])] + [cc.get("style", "")]
+            )
+            top_px = parse_css_px(merged_css, "top", 0.0)
+            height_px = parse_css_px(merged_css, "height", 1920.0)
+            ty_m = re.search(r"translateY\(\s*(-?\d+(?:\.\d+)?)px\s*\)", merged_css, flags=re.IGNORECASE)
+            translate_y = float(ty_m.group(1)) if ty_m else 0.0
+            is_unlowered = (
+                (top_px is not None and top_px < 120.0)
+                and (height_px is not None and height_px >= 1600.0)
+                and translate_y < 240.0
+            )
+            cc_end = cc["end"] if cc["end"] is not None else min(duration, cc["at"] + 3.0)
+            cutout_sticker_points.append(round((cc["at"] + cc_end) / 2.0, 2))
+            cutout_meta.append(
+                {
+                    "clip": cc,
+                    "end": cc_end,
+                    "top_px": top_px,
+                    "height_px": height_px,
+                    "is_unlowered": is_unlowered,
+                }
+            )
+
+            # Inspect overlapping main-stage <iframe> scenes behind this cutout
+            for mc in main_clips:
+                if mc["tag"] != "iframe":
+                    continue
+                mc_end = mc["end"] if mc["end"] is not None else duration
+                if mc["at"] < cc_end - 0.05 and mc_end > cc["at"] + 0.05:
+                    scene_info = inspect_behind_person_scene(film_dir / mc["base_src"])
+                    reasons: list[str] = []
+                    if scene_info["has_behind_text"]:
+                        if is_unlowered:
+                            sample = " / ".join(
+                                x["text"] for x in (scene_info["svg_texts"] + scene_info["html_texts"])[:3]
+                            )
+                            reasons.append(
+                                f"未缩小下沉特写构图(top={top_px:.0f}px,height={height_px:.0f}px)遮挡人后文字「{sample}」"
+                            )
+                        if scene_info["too_low_texts"]:
+                            low_desc = ", ".join(
+                                f"y={x['y']:.0f}px「{x['text']}」" for x in scene_info["too_low_texts"][:2]
+                            )
+                            reasons.append(f"人后文字低于 y=540px({low_desc})")
+                        if scene_info["long_texts"] or scene_info["behind_text_count"] >= 2:
+                            long_desc = ", ".join(
+                                f"「{x['text']}」({x['chars']}字)"
+                                for x in (
+                                    scene_info["long_texts"]
+                                    or (scene_info["svg_texts"] + scene_info["html_texts"])
+                                )[:2]
+                            )
+                            reasons.append(f"人后出现多行或长句({scene_info['behind_text_count']}行: {long_desc})")
+                    cutout_reports.append(
+                        {
+                            "cutout_id": cc["id"],
+                            "at": cc["at"],
+                            "top_px": top_px,
+                            "height_px": height_px,
+                            "is_unlowered": is_unlowered,
+                            "behind_scene": scene_info["scene"],
+                            "behind_text_count": scene_info.get("behind_text_count", 0),
+                            "violations": reasons,
+                        }
+                    )
+                    if reasons:
+                        hard_failures.append(
+                            f"前景抠像 `{cc['id']}` (at={cc['at']:.2f}s) 与人后场景 `{scene_info['scene']}` 违反防遮挡硬规：{'；'.join(reasons)}。请将信息文字/图解改为全屏切出、PiP分屏或前景避让层，或缩小下沉人物抠像保头顶 y>=640px 且人后仅放 y=260..540px 单行 2-4 字短词"
+                        )
+        if cutout_reports:
+            details["cutout_layer_checks"] = cutout_reports
+
+        # 4c. Check stickers head/face avoidance & right platform button zone
+        sticker_reports: list[dict[str, Any]] = []
+        for sc in sticker_clips:
+            st = sc.get("style", "")
+            left_px = parse_css_px(st, "left")
+            top_px = parse_css_px(st, "top")
+            w_px = parse_css_px(st, "width", 120.0)
+            h_px = parse_css_px(st, "height", 120.0)
+            sc_end = sc["end"] if sc["end"] is not None else min(duration, sc["at"] + 1.8)
+            cutout_sticker_points.append(round((sc["at"] + sc_end) / 2.0, 2))
+            if left_px is None or top_px is None or w_px is None or h_px is None:
+                continue
+            x1, y1, x2, y2 = left_px, top_px, left_px + w_px, top_px + h_px
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            stk_rec: dict[str, Any] = {
+                "id": sc["id"],
+                "at": sc["at"],
+                "box": [round(x1), round(y1), round(x2), round(y2)],
+                "center": [round(cx), round(cy)],
+                "status": "ok",
+            }
+
+            # Right platform button forbidden zone (x>920, y=850..1500)
+            if x2 > 920.0 and y2 > 850.0 and y1 < 1500.0:
+                stk_rec["status"] = "right_zone_violation"
+                hard_failures.append(
+                    f"stickers 动态贴纸 `{sc['id']}` (at={sc['at']:.2f}s, x={x1:.0f}..{x2:.0f}, y={y1:.0f}..{y2:.0f}) 侵入右侧平台按钮禁区(x>920, y=850..1500)"
+                )
+
+            # Check if fullscreen talking head or cutout speaker is active during sticker
+            active_unlowered = False
+            active_lowered_cutout = False
+            for cm in cutout_meta:
+                if cm["clip"]["at"] < sc_end - 0.05 and cm["end"] > sc["at"] + 0.05:
+                    if cm["is_unlowered"]:
+                        active_unlowered = True
+                    else:
+                        active_lowered_cutout = True
+            if not active_unlowered:
+                for mc in main_clips:
+                    if mc["tag"] != "video":
+                        continue
+                    mc_bn = Path(mc["base_src"]).name.lower()
+                    if mc_bn not in speaker_vids_early and not re.search(
+                        r"(^clip|speaker|talking|master-clip)", mc_bn
+                    ):
+                        continue
+                    mc_end = mc["end"] if mc["end"] is not None else duration
+                    if mc["at"] < sc_end - 0.05 and mc_end > sc["at"] + 0.05:
+                        active_unlowered = True
+                        break
+
+            if active_unlowered or active_lowered_cutout:
+                hx1, hy1, hx2, hy2 = (220.0, 280.0, 860.0, 1020.0) if active_unlowered else (220.0, 620.0, 860.0, 1360.0)
+                if hx1 <= cx <= hx2 and hy1 <= cy <= hy2:
+                    stk_rec["status"] = "head_overlap_hard"
+                    hard_failures.append(
+                        f"stickers 动态贴纸 `{sc['id']}` (at={sc['at']:.2f}s, 中心=({cx:.0f},{cy:.0f})) 落入人物头肩禁区(x={hx1:.0f}..{hx2:.0f}, y={hy1:.0f}..{hy2:.0f})，存在压头/压脸穿帮；请锚定具体载体并移出头肩区"
+                    )
+                else:
+                    ix = max(0.0, min(x2, hx2) - max(x1, hx1))
+                    iy = max(0.0, min(y2, hy2) - max(y1, hy1))
+                    inter = ix * iy
+                    area = max(1.0, w_px * h_px)
+                    if (inter / area) > 0.15:
+                        stk_rec["status"] = "head_overlap_warn"
+                        warnings.append(
+                            f"stickers 动态贴纸 `{sc['id']}` (at={sc['at']:.2f}s, box=[{x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f}]) 与人物头肩禁区存在 {inter/area:.0%} 交叠，请目检确认未压头发/肩膀"
+                        )
+            sticker_reports.append(stk_rec)
+        if sticker_reports:
+            details["sticker_checks"] = sticker_reports
+
     # 5. Check subtitles.html for forward-loop lag bug & dangling opening/ending cues
     sub_file = film_dir / "scenes" / "subtitles.html"
     if sub_file.exists():
@@ -663,7 +1049,58 @@ def audit_film_dir(
                     f"末句字幕结束于 {last_end:.2f}s，距全片结束({duration:.2f}s)仅余 {duration - last_end:.2f}s(<0.35s)，收尾偏仓促，建议留 0.6-1.2s 尾韵缓冲"
                 )
 
-    # 6. Scan scenes/*.html & *.css for bottom dead-zone traps, tiny fonts, ghost spoilers, static line-through, fake REC HUD
+    # 6. Scan scenes/*.html & *.css for bottom dead-zone traps, tiny fonts, ghost spoilers,
+    #    static line-through, fake REC HUD, single-use visual assets (count == 1), and
+    #    anti-PPT visual information density (text-only <= 25%, semantic SVG/Canvas >= 45%)
+    visual_asset_counts: dict[str, int] = {}
+    broll_video_count = 0
+
+    if film_html.exists():
+        # Count direct <img> stickers/stills and non-talking-head B-roll <video> clips in film.html
+        html_txt_all = film_html.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(
+            r'<img\b[^>]*src=["\']([^"\']+\.(?:jpg|jpeg|png|webp|gif))(?:#[^"\']*)?["\']',
+            html_txt_all,
+            flags=re.IGNORECASE,
+        ):
+            bn = Path(m.group(1)).name.lower()
+            if bn != "logo.png":
+                visual_asset_counts[bn] = visual_asset_counts.get(bn, 0) + 1
+
+        # Identify source talking-head videos (used in speaker-pip / cutout-fg or dominant main-stage source)
+        video_refs_all = re.findall(
+            r'<video\b[^>]*src=["\']([^"\']+\.(?:mp4|mov|webm|mkv))(?:#[^"\']*)?["\']',
+            html_txt_all,
+            flags=re.IGNORECASE,
+        )
+        vid_freq: dict[str, int] = {}
+        for vr in video_refs_all:
+            bn = Path(vr).name.lower()
+            vid_freq[bn] = vid_freq.get(bn, 0) + 1
+        dominant_vid = max(vid_freq, key=vid_freq.get) if vid_freq else None
+        speaker_vids: set[str] = set()
+        if dominant_vid:
+            speaker_vids.add(dominant_vid)
+        for sec_id in ("speaker-pip", "cutout-fg"):
+            sm = re.search(
+                rf'<section[^>]*id=["\']{sec_id}["\'][^>]*>(.*?)</section>',
+                html_txt_all,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if sm:
+                for vr in re.findall(
+                    r'<video\b[^>]*src=["\']([^"\']+\.(?:mp4|mov|webm|mkv))(?:#[^"\']*)?["\']',
+                    sm.group(1),
+                    flags=re.IGNORECASE,
+                ):
+                    speaker_vids.add(Path(vr).name.lower())
+        for vr in video_refs_all:
+            bn = Path(vr).name.lower()
+            if bn in speaker_vids or re.search(r"(^clip|speaker|talking|master-clip)", bn):
+                continue
+            broll_video_count += 1
+            visual_asset_counts[bn] = visual_asset_counts.get(bn, 0) + 1
+
     scenes_dir = film_dir / "scenes"
     if scenes_dir.exists():
         bottom_traps: list[str] = []
@@ -671,6 +1108,19 @@ def audit_film_dir(
         ghost_files: list[str] = []
         static_strikes: list[str] = []
         fake_rec_files: list[str] = []
+        content_scenes = 0
+        motion_graphic_scenes = 0
+        text_only_scenes: list[str] = []
+        plain_static_jpg_scenes: list[str] = []
+        helper_scene_re = re.compile(
+            r"^(?:subtitles|base-bg|bridge|fx-.*|.*transition.*|.*glitch.*|.*wipe.*)\.html$",
+            re.IGNORECASE,
+        )
+        asset_ref_re = re.compile(
+            r"""(?:src\s*=\s*["']([^"']+\.(?:jpg|jpeg|png|webp|gif|mp4|webm|mov))(?:#[^"']*)?["']|url\(\s*["']?([^"')]+?\.(?:jpg|jpeg|png|webp|gif))["']?\s*\))""",
+            re.IGNORECASE,
+        )
+
         for sf in sorted(scenes_dir.iterdir()):
             if sf.suffix.lower() not in {".html", ".css"} or sf.name == "subtitles.html":
                 continue
@@ -690,6 +1140,69 @@ def audit_film_dir(
                 static_strikes.append(sf.name)
             if style_slot == "v3" and re.search(r"REC\s*[·•]|SPEAKER\s+CAM", txt):
                 fake_rec_files.append(sf.name)
+
+            if sf.suffix.lower() == ".html" and not helper_scene_re.match(sf.name):
+                lower_txt = txt.lower()
+                scene_assets: list[str] = []
+                for a, b in asset_ref_re.findall(txt):
+                    bn = Path(a or b).name.lower()
+                    if bn == "logo.png":
+                        continue
+                    visual_asset_counts[bn] = visual_asset_counts.get(bn, 0) + 1
+                    scene_assets.append(bn)
+
+                # Exclude outro/ending slates from text-only card penalty, count regular narrative scenes
+                if not re.search(r"(?:outro|ending)", sf.name, re.IGNORECASE):
+                    content_scenes += 1
+                    has_svg = "<svg" in lower_txt
+                    has_canvas = "<canvas" in lower_txt
+                    has_video_tag = "<video" in lower_txt
+                    has_jpg = any(x.endswith((".jpg", ".jpeg")) for x in scene_assets)
+                    has_other_media = bool(scene_assets) or has_video_tag
+                    if has_svg or has_canvas:
+                        motion_graphic_scenes += 1
+                    if not (has_svg or has_canvas or has_other_media):
+                        text_only_scenes.append(sf.name)
+                    if has_jpg and not (has_svg or has_canvas):
+                        plain_static_jpg_scenes.append(sf.name)
+
+        reused_assets = {k: v for k, v in visual_asset_counts.items() if v > 1}
+        details["single_use_visual_assets"] = {
+            "counts": visual_asset_counts,
+            "reused": reused_assets,
+            "passed": len(reused_assets) == 0,
+        }
+        if reused_assets:
+            reused_desc = ", ".join(f"{k}({v}次)" for k, v in sorted(reused_assets.items()))
+            hard_failures.append(
+                f"违反「单支视频内视觉素材仅用1次」红线，检测到重复使用素材: {reused_desc}"
+            )
+
+        denom = content_scenes + broll_video_count
+        if denom > 0:
+            text_only_ratio = len(text_only_scenes) / denom
+            motion_ratio = (motion_graphic_scenes + broll_video_count) / denom
+            details["visual_density"] = {
+                "content_scenes": content_scenes,
+                "broll_video_clips": broll_video_count,
+                "motion_graphic_scenes": motion_graphic_scenes,
+                "text_only_scenes": len(text_only_scenes),
+                "text_only_ratio": round(text_only_ratio, 3),
+                "motion_ratio": round(motion_ratio, 3),
+                "plain_static_jpg_scenes": plain_static_jpg_scenes,
+            }
+            if denom >= 4 and text_only_ratio > 0.25:
+                warnings.append(
+                    f"纯文字圆角卡片占比偏高（{len(text_only_scenes)}/{denom} = {text_only_ratio:.0%} > 25% 上限，如 {', '.join(text_only_scenes[:4])}），易显静态 PPT 感，建议改用语义 SVG/Canvas 动画或动态素材（见 references/editing-vfx.md）"
+                )
+            if denom >= 4 and motion_ratio < 0.45:
+                warnings.append(
+                    f"语义级 SVG/Canvas 动画及运动视频占比偏低（{motion_graphic_scenes + broll_video_count}/{denom} = {motion_ratio:.0%} < 45% 基线），建议将流程/对比/对话/数据链路改写为动态图解或补充运动 B-roll"
+                )
+            if plain_static_jpg_scenes:
+                warnings.append(
+                    f"检测到 {len(plain_static_jpg_scenes)} 个静态 .jpg B-roll 场景未叠加 SVG/Canvas 矢量前景动效层（{', '.join(plain_static_jpg_scenes[:4])}），建议叠加流动光点/准星/连线避免纯静图慢推"
+                )
 
         if bottom_traps:
             hard_failures.append(
@@ -712,7 +1225,7 @@ def audit_film_dir(
                 f"电影沉浸槽位(v3)检测到伪监视器套壳 HUD（REC/SPEAKER CAM: {', '.join(fake_rec_files[:4])}），建议移除并改用动态宽银幕遮幅与光学景深"
             )
 
-    return details, cut_points
+    return details, cut_points, cutout_sticker_points
 
 
 def audit_publish_json(
@@ -817,15 +1330,20 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
     style_slot = detect_style_slot(video, film_dir, args.style)
     film_checks: dict[str, Any] = {}
     cut_points: list[float] = []
+    cutout_sticker_points: list[float] = []
     if film_dir:
-        film_checks, cut_points = audit_film_dir(
+        film_checks, cut_points, cutout_sticker_points = audit_film_dir(
             film_dir, duration, style_slot, hard_failures, warnings
         )
 
     overlays: dict[str, Any] = {}
     if args.out_dir:
         overlays = render_safezone_overlays(
-            video, duration, Path(args.out_dir), cut_points=cut_points
+            video,
+            duration,
+            Path(args.out_dir),
+            cut_points=cut_points,
+            cutout_sticker_points=cutout_sticker_points,
         )
 
     pub_checks: dict[str, Any] = {}
@@ -889,7 +1407,7 @@ def main() -> int:
     )
     p_render.add_argument(
         "--out-dir",
-        help="Output directory for safezone-grid.png, safezone-tail.png, safezone-cuts.png, and qc-report.json",
+        help="Output directory for safezone-grid.png, safezone-tail.png, safezone-cuts.png, safezone-cutouts.png, and qc-report.json",
     )
     p_render.add_argument(
         "--no-fail",

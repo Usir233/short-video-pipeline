@@ -211,7 +211,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 ## 步骤 3：脚本和分镜
 
 1. 查事实与定主旨：视频里出现的数字、时间、说法都要有出处，查不到的不写，出处记进 `topic/topic.json`；同时先用一句话写清全片要回答的核心问题与主要支撑观点，提前对齐后续三平台封面承诺（确保封面答应给观众的东西能在成片里找到）。
-2. 写 `script/storyboard.json`：每镜包含起止秒、屏幕文字（每屏不超过两行）、画面描述、画面做法（`code` / `image` / `video` / `library`）。
+2. 写 `script/storyboard.json`：每镜包含起止秒、屏幕文字（每屏不超过两行）、画面描述、画面做法（`code` / `image` / `video` / `library`），以及**逐镜「口播句/核心意群 → 配套 SVG/Canvas 动画或动态素材 → 触发时间点 → 转场特效」映射**（开工写 `film.html` 前先定动效分镜，杜绝纯文字卡片堆砌）。
    - 入口 A、B：总长 15–30 秒，5–8 镜；第一镜 3 秒内说出看点，最后一镜给一句总结。
    - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案。
 3. 默认不配音，字幕加音乐。参考视频有人声而本机没有可用的配音服务时，仍按无配音做，并在最后告诉用户。
@@ -224,13 +224,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
 
-- **A. 音乐、音效、贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、`sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
-- **B. 数据对比、参数表、清单、金句标题、流程动效**：直接写成 **OpenFilm 代码画面**（1080×1920 HTML/CSS/SVG/Canvas，最清晰、零版权风险）。
+- **A. 音乐、音效、动态贴纸、已有自存素材**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`、离线 1,587 枚动态贴纸 `sticker`）；缺音效/配乐时可用 `fetch_asset.py stock --kind audio --source openverse` 兜底。
+- **B. 数据对比、参数表、清单、金句标题、流程动效**：直接写成 **OpenFilm 语义级 SVG / Canvas 定制动画**（1080×1920，优先 `stroke-dashoffset`、`getPointAtLength` 流光、流式打字机与动态图解，最清晰、最贴口播、零版权风险）。
 - **C. 科技巨头发布新闻 / 产品报道 / 真实事件画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再由当前 agent 调用 `scripts/fetch_asset.py` 主动抓取并落盘到 OpenFilm 素材区：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、按需截 1080px 干净官网首屏；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
-- **D. 通用实拍 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → 已配免费 Key 时用 OpenFilm 内置 **Pexels / Pixabay**（用 2–4 个英文视觉关键词，视频加 `--orientation portrait`）→ 未配 Key 或缺图时用 `fetch_asset.py stock` 查免 Key 公开免版权库（Wikimedia Commons、NASA、Internet Archive、Openverse）。
-- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类代码画面。
+- **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **优先补充 1–2 段 3–6 秒真实运动视频（`.mp4`）**：已配免费 Key 时用 OpenFilm 内置 **Pexels / Pixabay**（用 2–4 个英文视觉关键词，视频加 `--orientation portrait`）→ 未配 Key 时用 `fetch_asset.py stock --kind video`（或 `--kind image` 兜底）查免 Key 公开免版权库（Wikimedia Commons、NASA、Internet Archive、Openverse）。
+- **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务——**静态生图入片必须叠加与口播绑定的 SVG 矢量前景动效层**，禁止仅做 5% 死板慢推；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类代码动画。
+- **单支视频内视觉素材单次使用铁律**：同一支成片内，每一份视觉素材（B-roll `.jpg`/`.mp4`、动态贴纸、用户配套原图，品牌固定 Logo 与源口播视频除外）**严格仅允许使用 1 次（`count = 1`）**，严禁跨镜复用或同镜双层 `<img>` 复用。
 
 素材放哪里：
 
@@ -260,7 +261,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
   - 全屏 16:9 裁 9:16 口播叠加底部浮卡时，必须通过上提构图（如 `scale(1.08–1.10) translateY(-5%)`）让人物下巴稳在 `y ≤ 1120px` 以上，浮卡置于下巴以下且 `y ≤ 1540px`，**严禁卡片切嘴或糊住下巴**；
   - 宽幅 PiP 框（宽高比 `>1.85`）内直接对 16:9 原片设横向 `object-position` 无效，须用内层容器 `scale + translateX` 将人物居中并压暗无关空墙，避免右侧露大片死墙；
   - 严禁对未出场信息卡使用 `opacity: 0.18–0.40` 灰暗幽灵预显（未讲到前保持 `opacity: 0` 或极简空槽，命中瞬间干脆入场）；卡片正文最小字号 `≥24px`，禁止 `overflow: hidden` 容器内容溢底裁切；尽量用动态实拍 B-roll 或交互式代码动效替代呆板静图；
-  - **剪辑节奏、转场与特效工艺硬规（细则与原语代码见 [references/editing-vfx.md](references/editing-vfx.md)）**：严格执行分风格 ASL 上限与反死镜红线（4K 源片口播 `>4.5–6s` 须用 4K 无损阶梯跳切或锁眼推镜 `--fx-ax/--fx-ay`，全屏 B-roll/图形夺权 `≥15%`）；跨 `<section>` 切换同主体时上轨须比下轨提前 `≥0.034s`（防浮点 1 帧双人头叠影），连续同机位严禁切碎复用同套 `scale` 动画（防缩放回弹）；严禁“空放 `whoosh` + 1 帧硬切”，大亮度/景别跳变必加 `0.3–0.5s` 视觉桥接（`clip-path` 空间形变、`--fx-blur` 甩切、跨轨 `fade` 叠化或沉黑屏息）；优先调用 OpenFilm 原生 `--of-cutout: 1`、`--of-lut`、SVG `stroke-dashoffset` 与 `motion-kit` 物理缓动，告别单一 `cubic-out` PPT 卡片与伪监视器 `REC` 套壳。
+  - **剪辑节奏、视觉信息密度、前后景防遮挡与特效工艺硬规（细则与原语代码见 [references/editing-vfx.md](references/editing-vfx.md)）**：严格执行分风格 ASL 上限与反死镜红线（4K 源片口播 `>4.5–6s` 须用 4K 无损阶梯跳切或锁眼推镜 `--fx-ax/--fx-ay`，全屏 B-roll/图形夺权 `≥15%`）；**严格压降静态 PPT 感（纯文字圆角卡 `≤25%`、语义级 SVG/Canvas 动效 `≥45%`、静态 B-roll 必叠 SVG 矢量前景动效层、单支视频内每份视觉素材严格仅用 1 次 `count = 1`）**；**严格区分前景与人后层级（需要读清的文字、SVG 图解与核心动效严禁塞进 `--of-cutout: 1` 人物背后被头肩遮挡，须全屏切出、PiP 分屏或前景避让叠加；人后巨字仅限人物缩小下沉头顶 `y≥640px` 后的 2–4 字超短单行词，发梢压字 `≤15%`；动态贴纸锚定视觉载体并避开全屏人物头肩禁区 `x=220..860, y=280..1020`）**；跨 `<section>` 切换同主体时上轨须比下轨提前 `≥0.034s`（防浮点 1 帧双人头叠影），连续同机位严禁切碎复用同套 `scale` 动画（防缩放回弹）；严禁“空放 `whoosh` + 1 帧硬切”，大亮度/景别跳变必加 `0.3–0.5s` 视觉桥接（`clip-path` 空间形变、`--fx-blur` 甩切、跨轨 `fade` 叠化、5 帧 RGB 故障或沉黑屏息）；优先调用 OpenFilm 原生 `--of-cutout: 1`（单段控 `≤4.2s`）、`--of-lut`、离线动态贴纸 `openfilm get sticker`、SVG `stroke-dashoffset`/`getPointAtLength` 与 `motion-kit` 四类物理缓动，告别单一 `cubic-out` PPT 卡片与伪监视器 `REC` 套壳。
 - 横屏官图或带文字的演示图放进竖屏卡片时，优先 `object-fit: contain` 配和谐底色，避免 `cover` 裁断左右文字；每个含图片的页面在 `window.film.ready` 里等待 `document.fonts.ready` 和全部 `<img>` 解码完成。
 - 同轨首尾相接的 `<iframe>` 不要给切入镜加 `opacity: 0 → 1` 的 `fadeIn`（切点首帧会露黑底并触发 `openfilm look --full` 黑帧告警）；让页面内部由 `frame(t)` 驱动元素入场即可，若确实需要叠化转场须分放上下两轨并重叠。
 - **无延迟标准字幕写法**：`subtitles.html` 禁止在正序 `for` 循环中用 `t <= c[1] + 0.12/0.14` 直接 `break`（相邻紧密台词会被前句拖尾卡住 3–4 帧并吞掉入场动画）；统一按 `Math.min(c[1] + 0.12, nextStart - 0.001)` 截断尾延或逆序匹配，并确保跨镜切点字幕不串台。
@@ -269,16 +270,16 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
   - 峰值极热/削波音效（如 `-7 LUFS`）须大幅压低（如 `0.06–0.08`），避免气口刺耳；短音效（`<audio>`）尽量不手写 `#t=0,x` 截尾，转场 whoosh 优先选有效长 `≤0.45s` 防拖尾压字，不同类型音效分放不同 `<section>` 防重叠，点缀 SFX 密度控制在 **`≤ 1 次/5s`**；长片（`>60s`）母带动态保持 `LRA ≥ 4.0 LU` 避免过度砖墙限幅疲劳。
 - **首尾气口与完整收尾硬约定（杜绝残句开篇、半句截断与无结尾感）**：独立成片与切片首句前 `0.8s` 内严禁残留无前文废语（「像我刚刚讲的」「反而是」「那这个」等）；末句必须落在**完整语义句号/明确结论点**上（严禁截断在转折词/引子/破折号半句上或切入下句起音，末句人声加 `30–50ms` 微淡出）；末段须具备清晰视觉收尾落版（最后核心信息停留可读 `≥1.5s`），并在末句落音后留约 `0.6–1.2s` 视觉余韵配合 BGM 自然淡出（片尾最后 `0.35s` 不得存在 `> -25 LUFS` 的未落音截断人声）。
 - 无头或批处理跑命令时统一加环境变量 `OPENFILM_NO_BROWSER=1`，且不要调用 `openfilm open`，避免拉起多余窗口或干扰机器上其他会话正在使用的全局 OpenFilm。
-- 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`）。每次都带 `--out`，不用默认的导出位置。
+- 渲染：`openfilm render --fps 30 --loudness=-14 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`；多片连续批产或高负载机器建议加 `--workers 2` 并错峰渲染以防过热与 4K 解码超时）。每次都带 `--out`，不用默认的导出位置。
 
 出片前自检，全部通过才能进入发布：
 
 - 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
-- **自动化声画、切点与安全区红框门禁（必跑）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、末尾 `0.35s` 无截断人声、BGM 无零淡化硬切、无跨轨浮点双人头叠影、无连续镜缩放回弹、字幕无延迟 Bug、末句无悬空半句、无底卡掉入 `y≥1540px`）；**并亲自打开带三平台安全区红框的 `output/check/safezone-grid.png`、`output/check/safezone-tail.png` 与切点逐帧图 `output/check/safezone-cuts.png` 目检**，逐项确认：右侧按钮禁区（橙框 `x=930..1080, y=850..1500`）无压字/无遮徽章、底部红区（`y>1560`）与顶部红区（`y<180`）干净、全屏浮卡未切嘴挡下巴、卡片容器无 `overflow: hidden` 切底溢出、切点无闭眼/双头/亮度暴跌穿帮、结尾收束停留与 BGM 淡出自然。
+- **自动化声画、切点、素材唯一性与安全区红框门禁（必跑）**：执行 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、末尾 `0.35s` 无截断人声、BGM 无零淡化硬切、单支视频内视觉素材严格单次使用、无跨轨浮点双人头叠影、无连续镜缩放回弹、无未下沉人物抠像遮挡人后文字/信息特效、无动态贴纸压头压脸或侵右侧按钮禁区、字幕无延迟 Bug、末句无悬空半句、无底卡掉入 `y≥1540px`）并核查视觉信息密度告警（纯文字卡 `≤25%`、语义 SVG/Canvas 动效 `≥45%`、静图 B-roll 叠 SVG 前景）；**并亲自打开带三平台安全区红框的 `output/check/safezone-grid.png`、`output/check/safezone-tail.png`、切点逐帧图 `output/check/safezone-cuts.png` 与抠像/贴纸专检图 `output/check/safezone-cutouts.png`（如有）目检**，逐项确认：右侧按钮禁区（橙框 `x=930..1080, y=850..1500`）无压字/无遮徽章、底部红区（`y>1560`）与顶部红区（`y<180`）干净、全屏浮卡未切嘴挡下巴、人后文字/特效未被人物头肩遮挡且动态贴纸未落入头肩禁区、卡片容器无 `overflow: hidden` 切底溢出、切点无闭眼/双头/亮度暴跌穿帮、结尾收束停留与 BGM 淡出自然。
 - 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
-自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`qc_video.py` 产出的 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`qc-report.json` 与 `ffprobe` 输出 `ffprobe.json` 一并保留，每项检查的结论写进 `check.json`。
+自检的记录存进 `output/check/`：`openfilm look` 存下的帧图复制一份进来，`qc_video.py` 产出的 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`safezone-cutouts.png`（如有）、`qc-report.json` 与 `ffprobe` 输出 `ffprobe.json` 一并保留，每项检查的结论写进 `check.json`。
 
 不合格就修到合格。修不好就停下报告，不发布。
 

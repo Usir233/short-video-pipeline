@@ -72,11 +72,13 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode searc
 
 | 镜头类型 | 最优通道（按顺序） | 执行命令 / 工具 |
 |---|---|---|
-| **A. 音乐、音效、贴纸、已有自存** | 1. OpenFilm 本地复用库 `my-media`<br>2. OpenFilm 自带 CC0 免费库<br>3. Openverse Audio（免 Key 备用） | `openfilm get my-media --prompt "..."`<br>`openfilm get music-search` / `sfx-search` / `sticker`<br>备用：`fetch_asset.py stock --kind audio --source openverse ...` |
-| **B. 数据对比、参数表、清单、金句标题、流程动效** | 直接写 **OpenFilm 代码画面**（HTML/CSS/SVG/Canvas） | 在 `film/` 下写 1080×1920 页面（清晰度最高、零版权风险、最快） |
+| **A. 音乐、音效、动态贴纸、已有自存** | 1. OpenFilm 本地复用库 `my-media`<br>2. OpenFilm 自带 CC0 免费库（含 **1,587 枚离线动态贴纸**：箭头/强调圈/警示标/徽章）<br>3. Openverse Audio（免 Key 备用） | `openfilm get my-media --prompt "..."`<br>`openfilm get music-search` / `sfx-search` / `sticker --prompt "..." --take <id>`<br>备用：`fetch_asset.py stock --kind audio --source openverse ...` |
+| **B. 数据对比、参数表、清单、金句标题、流程动效** | 直接写 **OpenFilm 语义级 SVG / Canvas 定制动画**（`stroke-dashoffset` + `getPointAtLength` 流光 / 流式打字机 / 拓扑图 / 天平 / 阶梯图），单支视频语义 SVG/Canvas 场景占比 `≥ 45%` | 在 `film/scenes/` 下写 1080×1920 动态页面（清晰度最高、最贴合口播、零版权风险、最快） |
 | **C. 科技巨头发布新闻 / 产品报道 / 真实事件** | 1. 找一手官方新闻稿/博客链接（`fetch_trends.py --mode search` 或 RSS 原文链接）<br>2. **抽官方高清配图 + 截取干净官网首屏**<br>3. **搜并截取官方发布会/Demo 3–6 秒短片段** | 抽图与截图：`fetch_asset.py news-page --url "<官方URL>" --out materials --screenshot`<br>搜官方视频：`fetch_asset.py video-search --query "Apple keynote official"`<br>精准切片：`fetch_asset.py video-clip --url "<URL>" --start 00:10 --end 00:16 --mute --out materials/demo.mp4` |
-| **D. 通用实拍 B-roll / 氛围空镜 / 科普插图** | 1. 查 `openfilm get my-media`（`.local/openfilm-user/saved/`）<br>2. **OpenFilm 内置 Pexels / Pixabay**（免费 API Key，**务必用 2–4 个英文视觉关键词**，视频加 `--orientation portrait`）<br>3. **零 Key 公开免版权库**：Wikimedia Commons（图/视频）、NASA（航天科技）、Internet Archive（历史影像）、Openverse（图/音） | 配了免费 Key：`openfilm get video-search --prompt "server room neon" --orientation portrait`<br>免 Key 兜底：`fetch_asset.py stock --query "microchip silicon wafer" --kind image --download 2 --out materials --assets film/assets --save-reusable` |
-| **E. 抽象概念 / 搜不到的专属场景** | 1. Agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生图服务<br>2. 生成视频（全片 ≤2 镜、每镜 ≤6 秒；付费须先告知用户费用并获同意）<br>3. 失败或不可用则退回 **B 类代码画面** | Agent 生图 / `openfilm get image` / `openfilm get video` |
+| **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图** | 1. 查 `openfilm get my-media`（`.local/openfilm-user/saved/`）<br>2. **优先补 1–2 段 3–6 秒真实运动视频（`.mp4`）**：已配免费 Key 用 **OpenFilm 内置 Pexels / Pixabay**（2–4 个英文视觉关键词 + `--orientation portrait`）；未配 Key 用 **免 Key 公开免版权库**（Wikimedia Commons / NASA / Internet Archive）搜视频与图 | 配了免费 Key：`openfilm get video-search --prompt "server room neon" --orientation portrait`<br>免 Key 优先视频：`fetch_asset.py stock --query "office team" --kind video --download 2 --out materials --assets film/assets --save-reusable`<br>免 Key 图片兜底：`fetch_asset.py stock --query "microchip silicon wafer" --kind image ...` |
+| **E. 抽象概念 / 搜不到的专属场景** | 1. Agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生图服务——**入片必须叠加与口播绑定的 SVG 矢量前景动效层**（光点/扫光/连线/准星），禁止纯静图死板慢推<br>2. 生成视频（全片 ≤2 镜、每镜 ≤6 秒；付费须先告知用户费用并获同意）<br>3. 失败或不可用则退回 **B 类代码动画** | Agent 生图 / `openfilm get image` / `openfilm get video` |
+
+> **单支视频内视觉素材单次使用铁律（硬约束）**：在同一支成片（单片或入口 E 的任意单槽位）中，每一张 B-roll 图、AI 生图、动态贴纸、预置手册原图或实拍视频 B-roll 片段（品牌固定 Logo 除外）**严格仅允许使用 1 次（`count = 1`）**，禁止跨镜复用或在同一场景中重复挂双层 `<img>`；在入口 E 中，4 个槽位之间也禁止照搬同一批补充 B-roll，须各自独立补足。
 
 ### 素材入库与复用命令
 
