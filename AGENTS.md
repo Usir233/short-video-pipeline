@@ -29,7 +29,7 @@
 
 ## 新环境
 
-本仓库只存规则，不含配套仓库。`node_modules/`、`rea-video/`、`creatorhub/` 任何一个不存在时，先按 `.agents/skills/short-video-pipeline/references/setup.md` 安装。
+本仓库只存规则，不含配套仓库。`node_modules/`、`rea-video/` 任何一个不存在时，先按 `.agents/skills/short-video-pipeline/references/setup.md` 安装（`creatorhub/` 当前默认停用，日常做片不安装也不启动，仅在用户显式要求启用时按需处理）。
 
 配套仓库一律用最新版本，不固定版本。用户说「更新配套仓库」时，按同一个文件的「更新已有环境」做。
 
@@ -44,10 +44,10 @@
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
-| `creatorhub/` | 否 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub)：账号、采集、下载、发布，本机接口 `http://127.0.0.1:8000` |
-| `browsers/` | 否 | 浏览器内核：`ms-playwright/`（OpenFilm 渲染和 CreatorHub 共用），以及可选的指纹浏览器 |
+| `creatorhub/` | 否 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub)（**当前默认停用**，不自动启动服务；仅在用户显式要求自动发布或平台采集时按需启用，本机接口 `http://127.0.0.1:8000`） |
+| `browsers/` | 否 | 浏览器内核：`ms-playwright/`（OpenFilm 渲染与新闻抓图/封面截图共用；按需启用 CreatorHub 时亦共用），以及可选的指纹浏览器 |
 | `.local/` | 否 | 配套仓库的设置、模型、缓存：`openfilm/`、`openfilm-user/`（其中 `saved/` 下按 `broll/`、`music/`、`sfx/`、`series/` 存放跨期复用的公共素材，可被 `openfilm get my-media` 检索）、`rea-video/`、`npm-cache/`、`pip-cache/` |
-| `素材投递区/` | 否 | 后续各期视频与配套素材投递区（不进 git，同盘零重复拷贝）：`已粗剪/`（已处理可直接当母素材）、`未处理原片/`（需先粗剪与预处理）、`参考爆款/`（入口 C 复刻参考）、`待直发成片/`（入口 D 待直发成片） |
+| `素材投递区/` | 否 | 后续各期视频与配套素材投递区（不进 git，同盘零重复拷贝）：`已粗剪/`（已处理可直接当母素材）、`未处理原片/`（需先粗剪与预处理）、`参考爆款/`（入口 C 复刻参考）、`待直发成片/`（入口 D 已有成片补齐文案/封面与审核交付） |
 | `runs/` | 否 | 归档：每次运行一个目录，外加总索引 `topics-log.jsonl` |
 
 参考文件：
@@ -59,7 +59,7 @@
 - `references/cover-design.md`：「意图电商」三平台口播视频封面设计规范、品牌固定图路径、出图检查与手动发布协同（支持多账号组扩展独立模板文档）
 - `references/editing-vfx.md`：剪辑方式与 OpenFilm 特效工艺规范（分风格 ASL 与反死镜红线、纯文字卡 `≤25%` 与语义 SVG/Canvas 动效 `≥45%` 信息密度、**音画字逐句 `local_t` 卡点同步与零静态摊牌/零脑补生造词**、**`speaker-pip` 五官防截断（`v2≥74%`）与去杂墙**、单片视觉素材严格单次使用、三层真会动素材与静图叠 SVG 前景、前景/人后抠像防遮挡与贴纸头肩避让、跨轨防浮点叠影、声画成对转场、零幽灵剧透、OpenFilm 原生 VFX 与 `motion-kit` 原语库）
 - `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、粗剪与打马赛克等人工确认闸门、母素材确立、1 完整特效母片 + 3 延伸风格子片、防传混路径命名与 `delivery/` 统一交付包）
-- `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.4.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线
+- `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.6.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线（**当前默认停用，仅在用户显式要求启用时参考**）
 - `references/publish-audit.md`：发布前审核门禁（通用媒体/文本/文案/封面/合规校验、分平台表单硬规则、入口 E 跨 4 片与路径收口门禁、自动修正/阻断机制）
 
 ## 检索范围与提速约定（面向所有 Agent）

@@ -324,9 +324,9 @@
 
 ### 14.5 发布协同约定（CreatorHub 封面边界 → 手动发布）
 
-- 经复核，CreatorHub（截至 `v0.4.0`）的发布接口与三平台脚本**均不支持为抖音、小红书、视频号上传自定义封面图**。
-- 因此，**凡本次任务制作了定制封面，流程在「成片 + 目标平台封面 + 过审文案」全部通过 [publish-audit.md](publish-audit.md) 校验后默认停下，不自动调用 CreatorHub 提交发布**（`run.json` 状态记为 `made`，`publish.json` 的 `publish_mode` 记为 `manual_with_covers`），由用户在各平台后台手动连同对应封面一并发布。
-- 仅当用户显式指令「不用管封面直接自动发，我后面去后台补换」或本次任务不做定制封面时，才继续走 CreatorHub 自动发布（入口 E 4 片矩阵即使不做封面仍默认交付 `delivery/` 手动发布，见 [multi-variant.md](multi-variant.md)）。
+- 本工作区当前**默认停用 CreatorHub**，且经复核 CreatorHub（截至 `v0.6.0`）的发布接口与国内三平台脚本**均不支持为抖音、小红书、视频号上传自定义视频封面图**。
+- 因此，**凡本次任务制作了定制封面，流程在「成片 + 目标平台封面 + 过审文案」全部通过 [publish-audit.md](publish-audit.md) 校验后默认停下，不启动也不调用 CreatorHub**（`run.json` 状态记为 `made`，`publish.json` 的 `publish_mode` 记为 `manual_with_covers`），由用户在各平台后台手动连同对应封面一并发布。
+- 仅当用户显式指令「启用 CreatorHub 直接自动发，封面我后面去后台补换」时，才按需启动 CreatorHub 自动发布（入口 E 4 片矩阵默认始终交付 `delivery/` 手动发布，见 [multi-variant.md](multi-variant.md)）。
 
 ### 14.6 在多片矩阵（入口 E）中的归档路径、防传混命名与防撞帧规则
 

@@ -357,6 +357,12 @@ def find_cross_platform(sources: dict[str, dict[str, Any]]) -> list[dict[str, An
 
 
 def main() -> int:
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     parser = argparse.ArgumentParser(description="拉取国内外热点、科技/AI热榜及科技巨头一手 RSS")
     parser.add_argument(
         "--mode",

@@ -1,6 +1,6 @@
 ---
 name: short-video-pipeline
-description: 在本工作区按固定流程做竖屏短视频并分发：支持单条视频（热点/指定主题/复刻/已有成片直发）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 1 完整特效母片 + 3 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布或 CreatorHub 自动发布）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
+description: 在本工作区按固定流程做竖屏短视频并准备三平台分发物料：支持单条视频（热点/指定主题/复刻/已有成片处理）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 1 完整特效母片 + 3 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布；CreatorHub 当前默认停用，仅显式要求时按需启用）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
 ---
 
 # 短视频流水线
@@ -11,7 +11,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
 
 用户已定：单条流程默认由 agent 从头跑到完，中途不逐步请示；素材由 agent 自行寻找或生成。**两类强制分流/暂停例外**：
 1. **入口 E（母素材 + 1 母片 + 3 子片）的人工确认闸门**：未处理原片完成粗剪（话题分段切割 + 去口气词）后**必须停下向用户汇报确认或追加预处理（如打马赛克）**，确认后才确立「母素材」；母片完整成片与 3 子片规划完成后默认**再次停下确认**（指令带「一路跑完」可跳过第二次暂停）。停在确认闸门时 `run.json` 置 `status: "waiting_approval"`，用户回复后复用原运行目录续跑。
-2. **带定制封面交付手动发布**：凡本次任务制作了定制封面（含入口 E 全部 4 片 × 目标平台定制封面，默认三平台共 12 张），因 CreatorHub 暂不支持上传自定义封面，做到成片、封面与文案全部过审并完成路径规范归集后即停下交付用户手动连同封面发布（不做定制封面时单片仍自动发布；入口 E 默认仍交付 `delivery/` 手动发布，除非用户显式要求自动发布并确认账号排期）。
+2. **默认本地审核交付手动发布（CreatorHub 当前默认停用）**：本工作区当前默认停用 CreatorHub（日常运行不检查也不启动 `127.0.0.1:8000` 服务，且 CreatorHub 截至 `v0.6.0` 亦不支持为抖音、小红书、视频号上传自定义视频封面）。全部入口（A–E，无论是否制作定制封面）在做到成片、三平台文案（及按需封面）全部通过 [references/publish-audit.md](references/publish-audit.md) 审核并完成路径规范归集后，默认统一置 `status: "made"` 停下交付用户手动发布；仅当用户显式指令「启用 CreatorHub」「用 CreatorHub 自动发」时，才按 [references/creatorhub-api.md](references/creatorhub-api.md) 启动服务并调用。
 
 ## 一切留在工作区内
 
@@ -31,7 +31,7 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
   . ../../../../../.agents/skills/short-video-pipeline/scripts/env.sh  # 入口 E runs/<目录>/variants/vN-<风格>/film/（5层）
   ```
 
-  每个新开的 shell 都要重新执行一次。执行后 `$SVP_ROOT` 是工作区根目录的绝对路径，在任意深层目录均直接用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`）、`"$SVP_ROOT/rea-video/.venv/bin/rea-video"` 与 `"$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/..."`，无需手数 `../` 层级。
+  每个新开的 shell 都要重新执行一次。执行后 `$SVP_ROOT` 是工作区根目录的绝对路径，在任意深层目录均直接用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`）、`"$SVP_REA_VIDEO"`（自动适配 Unix `rea-video/.venv/bin/rea-video` 与 Windows `rea-video/.venv/Scripts/rea-video.exe`）、`"$SVP_PYTHON"`（优先命中工作区 `rea-video/.venv` Python，避免误调系统 Python）与 `"$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/..."`，无需手数 `../` 层级。
 - 你自带的工具（生成图片、生成视频、下载、截图）把文件存到了工作区之外时，立刻把文件移进本次运行的目录，外面不留。
 - 你自己的草稿、脚本、中间文件放本次运行的 `tmp/`，不放系统临时目录。
 
@@ -42,14 +42,14 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
 | 步骤 | 仓库 | 本机位置 | 直接读取的相对文档 / Skill 路径 |
 |---|---|---|---|
 | 选题（国内外热榜、科技大厂 RSS） | 本工作区脚本 `scripts/fetch_trends.py` | `.agents/skills/short-video-pipeline/scripts/` | [references/sourcing.md](references/sourcing.md) |
-| 选题（小红书/抖音热度）、取参考视频 | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
+| 选题（小红书/抖音热度）、取分享链（**默认停用，按需可选**） | [3441293738/creatorhub](https://github.com/3441293738/creatorhub) | `creatorhub/` | `creatorhub/README.md`、`creatorhub/guide/platforms.json`、`/openapi.json` + [references/creatorhub-api.md](references/creatorhub-api.md) |
 | 复刻：拆解参考视频 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video) | `rea-video/` | `rea-video/skills/rea-video/SKILL.md`、`rea-video/skills/rea-video/references/`、`rea-video/docs/` |
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
 | 剪辑、渲染与特效工艺 | openfilm/openfilm + 本工作区规范 | `node_modules/openfilm/`、`.agents/.../references/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/editing-vfx.md](references/editing-vfx.md) |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（四项文案、三层标签、辰奕品牌主张与字段映射） |
 | 三平台定制封面（按需，多号组可扩展） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（「意图电商」口播系列规范；其他号组按需新增独立模板规范） |
 | 母素材与 1 母片 + 3 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、1 母片 + 3 延伸子片、防传混命名与 `delivery/` 交付包） |
-| 审核与分发 | 3441293738/creatorhub | `creatorhub/` | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）、[references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
+| 发布前审核与手动交付（可选 CreatorHub 自动发） | 本工作区规范（可选 3441293738/creatorhub） | `.agents/.../references/`（可选 `creatorhub/`） | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）；仅显式启用 CreatorHub 时另读 [references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
 
 各配套仓库的具体命令、参数和能力边界一律以上述相对路径里的项目自身文档为准；本文件及 `references/` 只保留本工作区的目录规范、串联顺序、文案/封面/矩阵裂变规范与安全红线，不再单独手抄维护上游工具明细。
 
@@ -60,21 +60,21 @@ description: 在本工作区按固定流程做竖屏短视频并分发：支持�
 | 「跑一条」「按热点做一条」 | A 热点原创 | 0 → 1 → 3 → 4 → 5 → 6 → 7 |
 | 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 0 → 3 → 4 → 5 → 6 → 7 |
 | 「复刻这条」「二创」「做同款」，或给出参考视频要求照着做 | C 复刻 | 0 → 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
-| 「发这条成片」「直接发 xxx.mp4」「帮我分发这个视频」（给出待发成片而非参考视频） | D 已有成片直发 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若原成片在工作区外则**只读复制**进 `output/final.mp4`，严禁移动/删除用户源文件；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与审核分发，不必跑全量拆片） |
+| 「发这条成片」「直接发 xxx.mp4」「帮我整理这个视频的三平台文案/封面」（给出已有成片而非参考视频） | D 已有成片处理交付 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若原成片在工作区外则**只读复制**进 `output/final.mp4`，严禁移动/删除用户源文件；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与发布前审核，默认交付手动发布，仅显式要求启用 CreatorHub 时走自动发布） |
 | 「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出「原片 + 配套素材」要求做 1 母片 + 3 条不同风格子片 | E 母素材裂变矩阵 | 按 [references/multi-variant.md](references/multi-variant.md) 执行 `E0 → E1(未处理先粗剪+闸门1) → 母素材确立 → E2(完整特效母片+3封面+3文案) → E3(3子片延伸规划+闸门2) → E4(3子片各自独立补素材/剪辑/3封面/3文案) → E5(单条+跨4片审核与路径收口) → E6(生成 delivery/ 交付包与归档)` |
 
 指令里的附加词：
 
-- 「参考爆款」：A 或 B 里加做步骤 2，参考视频由 agent 用 CreatorHub 采集该题下点赞最高的一条视频。
-- 「只发抖音」「不发小红书」等：只产出/发布指定平台。
-- 「带封面」「做意图电商封面」：启用对应系列的封面设计规范（当前为 [references/cover-design.md](references/cover-design.md)），完成后默认停下交付用户手动连同封面发布。
-- 「不做封面」「免封面」：跳过定制封面制作；无其他暂停词时走 CreatorHub 自动发布。
-- 「直接自动发（封面后补）」：即使制作了定制封面，也继续调用 CreatorHub 自动发布视频，由用户事后去各平台后台补换封面。
+- 「参考爆款」：A 或 B 里加做步骤 2，优先读取 `素材投递区/参考爆款/` 下的参考视频或用工作区 `yt-dlp` 下载公开参考视频（仅显式启用 CreatorHub 时才调用其关键词采集/分享下载）。
+- 「只发抖音」「不发小红书」等：只产出指定平台的文案/封面与分发物料。
+- 「带封面」「做意图电商封面」：启用对应系列的封面设计规范（当前为 [references/cover-design.md](references/cover-design.md)），过审后停在 `status: "made"` 交付用户手动连同封面发布。
+- 「不做封面」「免封面」：跳过定制封面制作；过审后默认停在 `status: "made"`（`publish_mode: "manual_delivery"`）交付成片与可复制文案。
+- 「启用 CreatorHub 自动发」「用 CreatorHub 发」（或「直接自动发（封面后补）」）：显式开启 CreatorHub 通道，按步骤 0 与步骤 6.4 启动 `127.0.0.1:8000` 并执行串行自动发布（若已制作定制封面则由用户事后去各平台后台补换封面）。
 - 「不带品牌口号」：跳过 [references/copywriting.md](references/copywriting.md) 中的辰奕品牌主张原句与品牌标签。
-- 「先给我看」「只做不发」：做到成片（及按需封面、文案过审）停下，给出产物路径，不自动提交发布。
+- 「先给我看」「只做不发」：做到成片（及按需封面、文案过审）停下，给出产物路径，不提交自动发布。
 - 入口 E 专用附加词：「已处理素材 / 直接当母素材」（跳过粗剪）、「未处理原片 / 先粗剪」（先做话题切割与去口气词并过闸门 1）、「一路跑完」（母素材确认后跳过闸门 2 直接跑完 1 母片 + 3 子片）、「拆三条」或「同内容三风格」（覆盖 3 子片自适应切分策略）。
 
-没有附加词时：三个平台都做；仅当视频明确命中已登记的系列封面规范（例如「意图电商」系列命中 [references/cover-design.md](references/cover-design.md)）或用户要求做定制封面时，才制作三张封面并停下交付手动发布；未命中专属封面系列（其他主题/其他号组无对应封面规范，或无出镜纯资讯视频）时不强行套用「意图电商」模板，默认不做定制封面、直接走 CreatorHub 自动发布。
+没有附加词时：三个平台都做；仅当视频明确命中已登记的系列封面规范（例如「意图电商」系列命中 [references/cover-design.md](references/cover-design.md)）或用户要求做定制封面时才制作三张定制封面，未命中专属封面系列时不强行套用「意图电商」模板（默认不做定制封面）；**因当前默认停用 CreatorHub，无论是否制作定制封面，全部通过发布前审核后默认均停在 `status: "made"` 交付用户手动发布**。
 
 ## 归档规范
 
@@ -140,19 +140,18 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - `status`：`running`（进行中）、`waiting_approval`（暂候用户人工确认，如入口 E 输入态判定 / 闸门 1 / 闸门 2 或无看图能力等待人工目检；此态不删续跑中间态、不提前写入 `topics-log.jsonl`，用户回复后复用原运行目录恢复为 `running` 续跑）、`made`（成片及按需封面/过审文案已出、待人工或指令发布）、`published`（要发的平台都发成功）、`partial`（部分平台成功）、`failed`（失败）、`stopped`（用户取消或因问题终止停下）
 - `step`：做到第几步
 - `platforms`：每个平台的任务 id、状态、作品链接
-- `versions`：OpenFilm 的版本号，rea-video 和 CreatorHub 的提交号
+- `versions`：OpenFilm 的版本号与 rea-video 的提交号（CreatorHub 默认停用记 `"disabled"`，显式启用时记录其提交号）
 - `notes`：跳过了什么、为什么停下、需要用户处理的事
 
-**不属于某一次运行的东西**不放进 `runs/`：配套仓库的设置、模型、缓存在 `.local/`，浏览器内核在 `browsers/`，CreatorHub 的账号数据和上传的成片副本在 `creatorhub/data/`。
+**不属于某一次运行的东西**不放进 `runs/`：配套仓库的设置、模型、缓存在 `.local/`，浏览器内核在 `browsers/`（若显式启用 CreatorHub，其账号数据和上传副本在 `creatorhub/data/`）。
 
 ## 步骤 0：开始前检查
 
 1. 环境：执行 `. .agents/skills/short-video-pipeline/scripts/env.sh`。
-2. 配套仓库：`node_modules/.bin/openfilm`、`rea-video/.venv/bin/rea-video`、`creatorhub/creatorhub.py` 三者都在。缺任何一个，先按 [references/setup.md](references/setup.md) 装好再继续。（入口 D 已有成片直发仅需 `creatorhub/creatorhub.py` 和 `ffprobe`；入口 E 默认交付手动发布，核心仅需 `openfilm`、`ffmpeg`、`ffprobe`，未处理输入或需人声分轨/ASR 时另需 `rea-video`，不阻塞于 CreatorHub。）
-3. CreatorHub：`curl -fsS http://127.0.0.1:8000/health`。不通就在执行过环境脚本的 shell 里，进 `creatorhub/` 后台执行 `python3 creatorhub.py start --no-open`，等到通。（仅当本次不调用 CreatorHub 采集/下载且走「带定制封面交付手动发布」或「先给我看」时，CreatorHub 未启动不阻塞制作。）
-4. 账号：需要调用 CreatorHub 采集或自动发布时，按 `references/creatorhub-api.md` 的「查账号」取每个平台可发布的账号（`status=active` 且 `account_role != "crawler"`；小红书另须 `has_creator=true`）。账号 id 每次现查。某平台不可发布时这次跳过它，并在最后告诉用户原因。需要自动发布但一个可用账号都没有时，请用户打开 `http://127.0.0.1:8000` 登录后再继续。带定制封面改走手动发布交付时，不因某平台登录态失效阻塞制作与交付，但在最终汇报中顺带提示异常账号。
-5. 建运行目录，写 `run.json`，见「归档规范」。
-6. 判断这次要不要派子代理，见「子代理」。
+2. 配套仓库：核验 `openfilm`（`node_modules/.bin/openfilm`）、`"$SVP_REA_VIDEO"`（Unix `rea-video/.venv/bin/rea-video` / Windows `rea-video/.venv/Scripts/rea-video.exe`）、`ffmpeg`、`ffprobe` 就绪。缺 `openfilm` 或 `rea-video` 时先按 [references/setup.md](references/setup.md) 装好再继续。（入口 D 已有成片处理默认仅需 `ffprobe`，做封面时另需 `rea-video/.venv` 与 `browsers/ms-playwright/`；入口 E 核心需 `openfilm`、`ffmpeg`、`ffprobe`，未处理输入或需人声分轨/ASR 时另需 `rea-video`。）
+3. **CreatorHub（当前默认停用，严禁自动后台拉起）**：日常运行**不检查 `http://127.0.0.1:8000/health`，也不自动执行 `creatorhub.py start`**。仅当用户本次显式指令「启用 CreatorHub」「用 CreatorHub 自动发」时，才检查 `creatorhub/creatorhub.py`、探测 `http://127.0.0.1:8000/health`（不通则在执行过 `env.sh` 的 shell 里进 `creatorhub/` 后台启动 `.venv` 下的 `creatorhub.py start --no-open`），并按 [references/creatorhub-api.md](references/creatorhub-api.md) 查 `/api/accounts` 可发布账号（`status=active` 且 `account_role != "crawler"`；小红书另须 `has_creator=true`）。
+4. 建运行目录，写 `run.json`，见「归档规范」。
+5. 判断这次要不要派子代理，见「子代理」。
 
 ## 步骤 1：选题（入口 A）
 
@@ -161,14 +160,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 1. 取国内外热榜与科技资讯（需要联网）：
    - 优先直接运行工作区脚本（先执行 `env.sh`）：
      ```bash
-     python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode all --out runs/<目录>/topic
+     "$SVP_PYTHON" .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode all --out runs/<目录>/topic
      ```
      按用户诉求可换 `--mode domestic`（国内大众）、`tech`（国内外科技/AI + 大厂一手 RSS）、`global`（海外科技）、`search --query "<关键词>"`（按主题实时搜国内外新闻）。
    - 脚本内置 4 层源并自动降级，原样存成 `topic/hotlist-<mode>.json`：
      - **L1 国内大众热榜**：60s 前三可用实例依次降级（`https://api.cczo.cc/60s` 首选 → `https://60s.mizhoubaobei.top` → `https://60s.okbaike.com`），取抖音 `/v2/douyin`、微博 `/v2/weibo`、B站 `/v2/bili`、知乎 `/v2/zhihu`、头条 `/v2/toutiao`、百度 `/v2/baidu/realtime`；全不通时自动降级到 NewsNow 国内源和 `https://solarhell.github.io/hot-search-crawler/latest.json`。
      - **L2 国内外科技 / 开发者 / 财经**：NewsNow（GitHub Trending、Product Hunt、Hacker News、华尔街见闻、财联社、IT之家、少数派、Solidot、联合早报）+ 60s（`/v2/it-news`、`/v2/it-news/rank`、`/v2/ai-news` 超时 ≥15s）+ HN Algolia 官方 API。
      - **L3 科技巨头一手官方发布 & 权威外媒**：OpenAI、Google、DeepMind、Apple Newsroom、NVIDIA、GitHub、Hugging Face、TechCrunch、The Verge、Ars Technica 官方直连 RSS，以及 Google News / Bing News RSS。
-   - **L4 平台内爆款交叉验证**：小红书没有可用的免费热榜；挑出 2–3 个候选后，用 CreatorHub 关键词采集（`search_sort: most_liked`, `publish_time: week`）查它们在小红书/抖音的实际互动热度（见 `references/creatorhub-api.md` 的「查热度」）。失败就跳过，不阻塞。
+   - **L4 平台内爆款交叉验证（默认停用跳过）**：CreatorHub 默认停用期间直接跳过 L4，基于 L1–L3 跨平台重合度选题即可；仅当用户显式启用 CreatorHub 时，可调用其关键词采集（`search_sort: most_liked`, `publish_time: week`）辅助查小红书/抖音互动热度（见 `references/creatorhub-api.md`）。
    - 视频号没有热榜来源，沿用选出的题。
 2. 筛选：
    - 跳过时政、领导人、外交、军事；灾难伤亡；未证实的传闻；针对具体个人的负面事件；医疗和投资建议。
@@ -188,10 +187,9 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 做法：
 
 1. 拿到参考视频，放进 `ref/`：
-   - 用户给了本地文件：复制进来。
-   - 用户给了链接或分享文案：用 CreatorHub 的「下载分享链接」，`output_dir` 填运行目录里 `ref/` 的绝对路径（`$SVP_ROOT/runs/<目录>/ref`）。
-   - 「参考爆款」：用 CreatorHub 关键词采集找到该题下点赞最高的视频，再用它的链接下载。
-2. 在运行目录里（或先在根目录 source `env.sh` 再 `cd` 进运行目录），执行环境脚本后，按 `rea-video` skill 执行 `survey`（能看图且未开 VLM 时先看后拆）和 `"$SVP_ROOT/rea-video/.venv/bin/rea-video" decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
+   - 用户给了本地文件（或已投递在 `素材投递区/参考爆款/`）：只读复制进来。
+   - 用户给了公开直连视频链接（如 YouTube / 公开网页视频）：用工作区 `rea-video/.venv` 内的 `yt-dlp` 下载进 `ref/`；若为需要平台登录态的私密社媒分享口令且当前未启用 CreatorHub，请用户将下载好的视频放入 `素材投递区/参考爆款/` 后继续（仅显式启用 CreatorHub 时才调用其「下载分享链接」与「关键词采集」，`output_dir` 填 `$SVP_ROOT/runs/<目录>/ref`）。
+2. 在运行目录里（或先在根目录 source `env.sh` 再 `cd` 进运行目录），执行环境脚本后，按 `rea-video` skill 执行 `survey`（能看图且未开 VLM 时先看后拆）和 `"$SVP_REA_VIDEO" decompose ref/<文件> -o ref/out --lang zh`，然后 `summary`、`review`、`apply-review`。所有输出都指到 `ref/out`。
 3. 按 rea-video skill 说的顺序读拆片包：`ref/out/VIDEO.md` → `video/content.md`（叙事线）→ `video/timeline.md` / `video/rhythm.md` → `video/packaging.md` → `video/sound.md` → `video/remake.md`。不要读 `breakdown.json`。
 4. 写出要保留的东西，记进 `script/storyboard.json` 的 `reference` 字段：
    - 叙事线：每一段在抓注意、交代背景、给证据、转折还是给结论。
@@ -313,14 +311,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 > **强制门禁**：无论是交付用户手动发布，还是调用 CreatorHub 的 `POST /api/publish` 建任务，**都必须先按 [references/publish-audit.md](references/publish-audit.md) 完成逐平台发布前审核**（先以 `qc_video.py audit-render --video <成片> --film-dir <film/> --publish-json <publish.json> --out-dir <output/check>` 过一遍自动化硬校验，再核验媒体规格与安全区红框图、文本洁净度、文案规范去秒数与品牌一致性、封面规格与视觉 8 项自检、话题总长、合规、账号状态与 `account_role != "crawler"` 以及分平台表单硬校验），并将结论写入 `publish/publish.json` 的 `audit` 字段。可无损自动修正的格式问题（如视频号短标题去空格、描述去秒数）须修正并复审通过；存在未通过的硬阻断项时**严禁建任务或放行交付**。
 
-### 6.4 交付手动发布或 CreatorHub 自动发布
+### 6.4 交付手动发布（默认）或按需 CreatorHub 自动发布
 
-- **情况 A：带定制封面，或带「先给我看」「只做不发」→ 停下交付手动发布（不调用 CreatorHub 建任务）**
-  - 经复核，CreatorHub（截至 `v0.4.0`）暂不支持为抖音、小红书、视频号上传自定义封面图。凡本次制作了定制封面（且用户未显式指令「直接自动发（封面后补）」），过审后即停下：`run.json` 记 `status: "made"`、`publish/publish.json` 记 `publish_mode: "manual_with_covers"`，把成片、三张封面图与三套可直接复制的四项文案完整交付用户手动连同封面一并发布。
-- **情况 B：不做定制封面（或用户显式要求「直接自动发（封面后补）」）→ CreatorHub 串行自动发布**
+- **情况 A（默认路径）：本地过审交付手动发布（CreatorHub 默认停用，不启动/不调用 `:8000`）**
+  - 当前工作区默认停用 CreatorHub（且截至 `v0.6.0` CreatorHub 亦不支持为抖音、小红书、视频号上传自定义视频封面）。除非用户显式指令「启用 CreatorHub 自动发」，所有任务在通过 `6.3` 审核门禁后即停下收口：`run.json` 记 `status: "made"`，`publish/publish.json` 记 `publish_mode: "manual_with_covers"`（有定制封面时）或 `"manual_delivery"`（免封面时），将成片、目标平台封面图（如有）与可直接复制的四项文案完整交付用户手动发布。
+- **情况 B（按需可选）：仅当用户显式指令启用 CreatorHub 自动发布时**
   - **按 [references/creatorhub-api.md](references/creatorhub-api.md) 的文档索引与调用约定做**；具体字段和各平台能力以运行中的 `http://127.0.0.1:8000/openapi.json`、`creatorhub/guide/platforms.json` 和 `creatorhub/app/api/publishing.py` 为准。
   - **优先走本机 REST API**（`http://127.0.0.1:8000/api/...`）；API 异常或报错不明确时，可先只读调 `GET /api/diagnostics/summary` 与 `GET /api/diagnostics/logs` 排查，必要时打开 `http://127.0.0.1:8000` 前端工作台排查（严守不删账号、不改账号角色/代理/指纹/浏览器内核、不强行解除写暂停、不重试 `uncertain`、不外泄敏感信息的红线；需要扫码或人机验证时停下通知用户）。
-  - **逐平台串行（IDE 终端优先非阻塞轮询）**：成片上传一次后，对每个通过审核的平台依次走 `POST /api/publish`「建任务 → 执行并等待终态」（仅明确要求多号定时错峰群发时考虑 `POST /api/matrix/publish-batch`），一个平台结束后再建下一个平台；在易超时的终端环境里，建完任务后间隔轮询 `GET /api/publish` 的 `status` 与 `live_stage` 等待结束（`v0.4.0` 拟人交互引擎单平台耗时通常 2–6 分钟）。
+  - **逐平台串行（IDE 终端优先非阻塞轮询）**：成片上传一次后，对每个通过审核的平台依次走 `POST /api/publish`「建任务 → 执行并等待终态」（仅明确要求多号定时错峰群发时考虑 `POST /api/matrix/publish-batch`），一个平台结束后再建下一个平台；在易超时的终端环境里，建完任务后间隔轮询 `GET /api/publish` 的 `status` 与 `live_stage` 等待结束（拟人交互引擎单平台耗时通常 2–6 分钟）。
   - 状态是「结果待确认（`uncertain`）」时不重试、不删除、不修改，交给用户去平台核对；若排查发现新的平台表单校验规则，须同步沉淀到 [references/publish-audit.md](references/publish-audit.md) 的「实测踩坑补充」。
 
 ## 步骤 7：记录和汇报

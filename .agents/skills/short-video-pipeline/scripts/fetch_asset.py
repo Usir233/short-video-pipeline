@@ -35,9 +35,9 @@ def rel_to_root(path: Path | str | None) -> str | None:
         return None
     p = Path(path)
     try:
-        return str(p.resolve().relative_to(svp_root().resolve()))
+        return p.resolve().relative_to(svp_root().resolve()).as_posix()
     except Exception:
-        return str(p)
+        return p.as_posix()
 
 
 def svp_root() -> Path:
@@ -257,7 +257,14 @@ const { chromium } = require(process.env.SVP_PW_MOD);
     env["SHOT_PATH"] = screenshot_path
     env["MAX_IMGS"] = str(args.max_images)
 
-    proc = subprocess.run(["node", "-e", node_script], env=env, capture_output=True, text=True)
+    proc = subprocess.run(
+        ["node", "-e", node_script],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if proc.returncode != 0:
         print(f"抓页失败：{proc.stderr.strip()}", file=sys.stderr)
         return 1
@@ -523,16 +530,25 @@ def cmd_stock(args: argparse.Namespace) -> int:
     return 0
 
 
-# -------------------- 3 & 4. video-search / video-clip (reuse creatorhub yt-dlp) --------------------
+# -------------------- 3 & 4. video-search / video-clip (reuse workspace yt-dlp) --------------------
 
 def ytdlp_bin() -> Path:
-    cand = svp_root() / "creatorhub" / ".venv" / "bin" / "yt-dlp"
-    if cand.is_file():
-        return cand
+    root = svp_root()
+    candidates = [
+        root / "rea-video" / ".venv" / "Scripts" / "yt-dlp.exe",
+        root / "rea-video" / ".venv" / "bin" / "yt-dlp",
+        root / "creatorhub" / ".venv" / "Scripts" / "yt-dlp.exe",
+        root / "creatorhub" / ".venv" / "bin" / "yt-dlp",
+    ]
+    for cand in candidates:
+        if cand.is_file():
+            return cand
     found = shutil.which("yt-dlp")
     if found:
         return Path(found)
-    raise FileNotFoundError("未找到工作区 creatorhub/.venv/bin/yt-dlp")
+    raise FileNotFoundError(
+        "未找到工作区 yt-dlp（rea-video/.venv 或 creatorhub/.venv），请在工作区虚拟环境执行 pip install yt-dlp yt-dlp-ejs"
+    )
 
 
 def cmd_video_search(args: argparse.Namespace) -> int:
@@ -541,6 +557,8 @@ def cmd_video_search(args: argparse.Namespace) -> int:
         [str(exe), "--flat-playlist", "--dump-json", f"ytsearch{args.limit}:{args.query}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if proc.returncode != 0:
         print(proc.stderr.strip(), file=sys.stderr)
@@ -583,7 +601,13 @@ def cmd_video_clip(args: argparse.Namespace) -> int:
         "-o", str(out_file),
         args.url,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     shutil.rmtree(tmp_dir, ignore_errors=True)
     if proc.returncode != 0 or not out_file.is_file():
         print(f"切片下载失败：{proc.stderr.strip()}", file=sys.stderr)
@@ -591,7 +615,14 @@ def cmd_video_clip(args: argparse.Namespace) -> int:
 
     if args.mute:
         muted_tmp = out_file.with_suffix(".muted.mp4")
-        subprocess.run(["ffmpeg", "-y", "-i", str(out_file), "-c:v", "copy", "-an", str(muted_tmp)], check=True, capture_output=True)
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-y", "-i", str(out_file), "-c:v", "copy", "-an", str(muted_tmp)],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         muted_tmp.replace(out_file)
 
     copied = copy_to_openfilm_areas(
@@ -637,6 +668,12 @@ def cmd_register(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     p = argparse.ArgumentParser(description="工作区素材搜索、抓取与 OpenFilm 归档登记工具")
     sub = p.add_subparsers(dest="cmd", required=True)
 

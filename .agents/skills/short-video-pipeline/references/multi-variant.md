@@ -2,7 +2,7 @@
 
 本文件定义本工作区 **入口 E（单组输入 → 确立母素材 → 1 条完整特效母片 + 3 条基于当前母片延伸的差异风格子片）** 的完整作业标准、人工确认闸门、全链路路径与防传混命名规范以及统一交付包结构。
 
-所有路径均相对工作区根目录，严禁在任何文件或 JSON 中写死本机绝对路径；运行命令前先在当前 shell 执行环境脚本（**推荐先在根目录 `. .agents/skills/short-video-pipeline/scripts/env.sh` 再 `cd` 进目标目录**；若在深层目录直接 source：`master/film/` 为 4 层 `. ../../../../.agents/skills/short-video-pipeline/scripts/env.sh`，`variants/vN-<风格>/film/` 为 5 层 `. ../../../../../.agents/skills/short-video-pipeline/scripts/env.sh`）。source 后在任意深层目录统一直接调用 `openfilm`、`"$SVP_ROOT/rea-video/.venv/bin/rea-video"` 与 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`，切勿硬写 `../../../`。
+所有路径均相对工作区根目录，严禁在任何文件或 JSON 中写死本机绝对路径；运行命令前先在当前 shell 执行环境脚本（**推荐先在根目录 `. .agents/skills/short-video-pipeline/scripts/env.sh` 再 `cd` 进目标目录**；若在深层目录直接 source：`master/film/` 为 4 层 `. ../../../../.agents/skills/short-video-pipeline/scripts/env.sh`，`variants/vN-<风格>/film/` 为 5 层 `. ../../../../../.agents/skills/short-video-pipeline/scripts/env.sh`）。source 后在任意深层目录统一直接调用 `openfilm`、`"$SVP_REA_VIDEO"`（自动适配 Unix `bin/rea-video` 与 Windows `Scripts/rea-video.exe`）与 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`，切勿硬写 `../../../`。
 
 ---
 

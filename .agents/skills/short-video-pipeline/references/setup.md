@@ -28,13 +28,15 @@
   | `OPENFILM_SAVED`、`OPENFILM_SKILLS` | `.local/openfilm-user/` | OpenFilm 公共素材区（`saved/`，可跨视频通过 `openfilm get my-media` 复用）、用户自己的 skill | `~/Movies/OpenFilm` |
   | `REA_VIDEO_MODELS` | `.local/rea-video/models/` | rea-video 的模型 | `~/.cache/rea-video/models` |
   | `REA_VIDEO_HOME` | `.local/rea-video/home/` | rea-video 的记忆文件 | `~/.rea-video` |
-  | `PLAYWRIGHT_BROWSERS_PATH` | `browsers/ms-playwright/` | OpenFilm 渲染和 CreatorHub 用的浏览器内核 | 用户缓存目录下的 `ms-playwright` |
+  | `PLAYWRIGHT_BROWSERS_PATH` | `browsers/ms-playwright/` | OpenFilm 渲染与新闻页抓图/封面截图共用的浏览器内核（按需启用 CreatorHub 时亦共用） | 用户缓存目录下的 `ms-playwright` |
   | `npm_config_cache`、`PIP_CACHE_DIR` | `.local/npm-cache/`、`.local/pip-cache/` | 包管理器的下载缓存 | `~/.npm`、用户缓存目录 |
-  | `PYTHONPATH`（前置钩子） | `.agents/skills/short-video-pipeline/scripts/py_gpu_site` | 自动预加载工作区虚拟环境内的 CUDA/cuDNN 并把 Python `onnxruntime`（`rea-video` 分轨/OCR、封面抠像等）优先提升至 `CUDAExecutionProvider`（不改上游源码，无独显自动回退 CPU） | 仅走 `CPUExecutionProvider` |
+  | `PYTHONUTF8`、`PYTHONIOENCODING` | `1`、`utf-8` | 统一 Python 标准流与文件 UTF-8 编码，防止 Windows GBK 控制台报编码错误 | Windows 默认走系统代码页 |
+  | `SVP_PYTHON`、`SVP_REA_VIDEO` | `rea-video/.venv` 对应可执行文件 | 自动适配 Windows（`.venv/Scripts/*.exe`）与 macOS/Linux（`.venv/bin/*`），避免误调系统 Python | — |
+  | `PYTHONPATH`（前置钩子） | `.agents/skills/short-video-pipeline/scripts/py_gpu_site` | 自动适配 Windows `;` / Unix `:` 分隔符，预加载工作区虚拟环境内的 CUDA/cuDNN 并把 Python `onnxruntime`（`rea-video` 分轨/OCR、封面抠像等）优先提升至 `CUDAExecutionProvider`（不改上游源码，无独显自动回退 CPU） | 仅走 `CPUExecutionProvider` |
   | `SVP_ROOT` | 工作区根目录的绝对路径 | 给需要绝对路径的接口用 | — |
   | `PATH`（仅当前 shell） | 前置 `$SVP_ROOT/node_modules/.bin` | 确保当前 shell 中直接运行 `openfilm` 也命中工作区局部版 | 命中工作区外全局 `openfilm` |
 
-  启动 CreatorHub 的那个 shell 也必须先执行它，否则 CreatorHub 会到用户缓存目录里找浏览器内核。
+  若后续按需启动 CreatorHub，启动它的那个 shell 也必须先执行 `env.sh`，否则它会到用户缓存目录里找浏览器内核。
 
 做不到放进工作区的，只有两类：
 
@@ -72,19 +74,21 @@ node_modules/.bin/openfilm doctor
 ```bash
 git clone https://github.com/JuneYaooo/rea-video.git
 python3.12 -m venv rea-video/.venv          # 换成本机有的 3.12–3.14 解释器
-(cd rea-video && .venv/bin/python -m pip install -e ".[ocr,asr]")
+(cd rea-video && .venv/bin/python -m pip install -e ".[ocr,asr]" yt-dlp yt-dlp-ejs)
 # 本机有 NVIDIA 独显时，在 rea-video/.venv 内将 CPU 版 onnxruntime 替换为自带 CUDA/cuDNN 轮子的 GPU 版，并写入局部 .pth 钩子（不改 rea-video 源码）：
-rea-video/.venv/bin/python -m pip uninstall -y onnxruntime && rea-video/.venv/bin/python -m pip install "onnxruntime-gpu[cuda,cudnn]"
+rea-video/.venv/bin/python -m pip uninstall -y onnxruntime onnxruntime-gpu && rea-video/.venv/bin/python -m pip install "onnxruntime-gpu[cuda,cudnn]"
 rea-video/.venv/bin/python -c 'import pathlib, site; p = pathlib.Path([s for s in site.getsitepackages() if "site-packages" in s][0]) / "svp_gpu_site.pth"; p.write_text(str((pathlib.Path.cwd() / ".agents/skills/short-video-pipeline/scripts/py_gpu_site").resolve()) + "\n", encoding="utf-8")'
 rea-video/.venv/bin/rea-video --help
 ```
-*(Windows 下将 `.venv/bin/python` 与 `.venv/bin/rea-video` 对应替换为 `.venv/Scripts/python.exe` 与 `.venv/Scripts/rea-video.exe`；无 NVIDIA 独显时跳过 `onnxruntime-gpu` 替换步骤即可。)*
+*(Windows 下将 `.venv/bin/python` 与 `.venv/bin/rea-video` 对应替换为 `.venv/Scripts/python.exe` 与 `.venv/Scripts/rea-video.exe`，或在 `source env.sh` 后直接用 `"$SVP_PYTHON"` 与 `"$SVP_REA_VIDEO"`；同时一并在 `rea-video/.venv` 安装 `yt-dlp yt-dlp-ejs`，使 `scripts/fetch_asset.py` 的官方视频切片能力完全独立于 CreatorHub。无 NVIDIA 独显时跳过 `onnxruntime-gpu` 替换步骤即可。)*
 
 依赖装进 `rea-video/.venv`，不进系统 Python。不要运行它的 `scripts/install_skill.sh`：那个脚本会往系统 Python 和用户主目录里装东西。
 
 装之前看一眼 `rea-video/skills/rea-video/references/setup.md`，新版本对 Python 或依赖的要求变了就以它为准。
 
-### 3. CreatorHub
+### 3. CreatorHub（可选，当前默认停用，日常做片无需安装或启动）
+
+> **当前状态**：本工作区默认停用 CreatorHub（日常做片全部走本地审核后手动发布交付，本地已有 `creatorhub/` 目录保持静置即可，不要自动启动服务）。仅当用户后续显式要求恢复 CreatorHub 自动发布或平台内采集时，才按下方步骤安装或启动：
 
 ```bash
 git clone https://github.com/3441293738/creatorhub.git
@@ -104,23 +108,21 @@ curl -fsS http://127.0.0.1:8000/health
 ```bash
 . .agents/skills/short-video-pipeline/scripts/env.sh
 
-# OpenFilm
+# OpenFilm（更新后若 package.json 被 npm 改写为固定版本号，用 git checkout -- package.json 保持 "latest"）
 npm install openfilm@latest
+git checkout -- package.json
 
-# rea-video（若本机有 NVIDIA 独显，pip install 后重新确保 onnxruntime-gpu[cuda,cudnn] 保持生效）
+# rea-video（含独立 yt-dlp；若本机有 NVIDIA 独显，同时卸载 onnxruntime 与 onnxruntime-gpu 再重装，防止命名空间覆盖残留空包）
 git -C rea-video pull --ff-only
-(cd rea-video && .venv/bin/python -m pip install -e ".[ocr,asr]")
-rea-video/.venv/bin/python -m pip uninstall -y onnxruntime && rea-video/.venv/bin/python -m pip install "onnxruntime-gpu[cuda,cudnn]"
+(cd rea-video && "$SVP_PYTHON" -m pip install -e ".[ocr,asr]" --upgrade yt-dlp yt-dlp-ejs)
+"$SVP_PYTHON" -m pip uninstall -y onnxruntime onnxruntime-gpu && "$SVP_PYTHON" -m pip install "onnxruntime-gpu[cuda,cudnn]"
 
-# CreatorHub：先确认没有正在执行的任务，再停服务、更新、重装依赖、重启
-curl -fsS "http://127.0.0.1:8000/api/task-queue?state=running"
-# 停服务：它没有 stop 命令，结束当初 `creatorhub.py start` 启动的那个进程
-git -C creatorhub pull --ff-only
-(cd creatorhub && python3 creatorhub.py install)
-(cd creatorhub && python3 creatorhub.py start --no-open)    # 放后台运行
+# CreatorHub（当前默认停用：默认跳过以下启动步骤；若需同步代码仅拉取与更新依赖，不后台启动服务，除非用户显式要求启用）
+# git -C creatorhub pull --ff-only
+# (cd creatorhub && .venv/bin/python creatorhub.py install)   # Windows 用 .venv/Scripts/python.exe
 ```
 
-更新 CreatorHub 的注意事项：
+若用户显式要求启用并更新运行中的 CreatorHub 时的注意事项：
 
 - 有任务在执行，或有发布任务处在 `publishing`、`uncertain` 状态时，不要更新，告诉用户原因。
 - 停服务前告诉用户一声。更新不会动 `creatorhub/data/`，但更新前仍建议用户自己备份这个目录。
@@ -129,7 +131,7 @@ git -C creatorhub pull --ff-only
 更新后必须做：
 
 1. 跑一遍下面的「装完后的验证」。
-2. 确认各配套仓库的最新文档与接口入口可读（`node_modules/openfilm/SYSTEM_PROMPT.md`、`rea-video/skills/rea-video/SKILL.md`、`creatorhub/guide/platforms.json` 以及 `http://127.0.0.1:8000/openapi.json`）。后续执行任务时直接以各仓库最新自带文档和实时接口为准，无需手工修改本工作区的参考文档。
+2. 确认启用的配套仓库最新文档可读（`node_modules/openfilm/SYSTEM_PROMPT.md`、`rea-video/skills/rea-video/SKILL.md`；仅在显式启用 CreatorHub 时另核验 `creatorhub/guide/platforms.json` 与 `http://127.0.0.1:8000/openapi.json`）。后续执行任务时直接以各仓库最新自带文档为准，无需手工修改本工作区的参考文档。
 
 ## 需要用户亲自做的事
 
@@ -152,11 +154,12 @@ git -C creatorhub pull --ff-only
 
 ```bash
 . .agents/skills/short-video-pipeline/scripts/env.sh
-node_modules/.bin/openfilm doctor                               # Data、Projects 两行都在工作区里，Browser 一行正常
-node_modules/.bin/openfilm get                                  # 列出自带库和可用服务
-rea-video/.venv/bin/rea-video decompose <任意一个 mp4> -o runs/_check --lang zh
+OPENFILM_NO_BROWSER=1 node_modules/.bin/openfilm doctor         # Data、Projects 两行都在工作区里，Browser 一行正常
+OPENFILM_NO_BROWSER=1 node_modules/.bin/openfilm get            # 列出自带库和可用服务
+"$SVP_REA_VIDEO" decompose <任意一个 mp4> -o runs/_check --lang zh
 ls runs/_check/VIDEO.md runs/_check/video                       # 两者都在才算装对，看完删掉 runs/_check
-curl -fsS http://127.0.0.1:8000/api/accounts                    # 能看到已登录的账号
+rm -rf runs/_check
+# 仅当显式启用 CreatorHub 时额外验证：curl -fsS http://127.0.0.1:8000/api/accounts
 ```
 
 ## 以前装在工作区之外的环境

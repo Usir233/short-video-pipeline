@@ -35,19 +35,48 @@ export OPENFILM_SKILLS="$SVP_ROOT/.local/openfilm-user/skills"
 export REA_VIDEO_MODELS="$SVP_ROOT/.local/rea-video/models"
 export REA_VIDEO_HOME="$SVP_ROOT/.local/rea-video/home"
 
-# 浏览器内核：OpenFilm 渲染和 CreatorHub 共用这一个目录
+# 浏览器内核：OpenFilm 渲染与新闻页抓图/封面截图共用（按需启用 CreatorHub 时亦共用）
 export PLAYWRIGHT_BROWSERS_PATH="$SVP_ROOT/browsers/ms-playwright"
 
-# 包管理器的下载缓存
+# 包管理器的下载缓存与 Python UTF-8 编码统一（防止 Windows GBK 控制台报编码错误）
 export npm_config_cache="$SVP_ROOT/.local/npm-cache"
 export PIP_CACHE_DIR="$SVP_ROOT/.local/pip-cache"
+export PYTHONUTF8=1
+export PYTHONIOENCODING="utf-8"
+
+# 工作区跨平台命令入口变量（自动适配 Windows Scripts/*.exe 与 macOS/Linux bin/*，避免误调系统 Python）
+if [ -x "$SVP_ROOT/rea-video/.venv/Scripts/python.exe" ]; then
+  export SVP_PYTHON="$SVP_ROOT/rea-video/.venv/Scripts/python.exe"
+elif [ -x "$SVP_ROOT/rea-video/.venv/bin/python" ]; then
+  export SVP_PYTHON="$SVP_ROOT/rea-video/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  export SVP_PYTHON="python3"
+else
+  export SVP_PYTHON="python"
+fi
+
+if [ -x "$SVP_ROOT/rea-video/.venv/Scripts/rea-video.exe" ]; then
+  export SVP_REA_VIDEO="$SVP_ROOT/rea-video/.venv/Scripts/rea-video.exe"
+elif [ -x "$SVP_ROOT/rea-video/.venv/bin/rea-video" ]; then
+  export SVP_REA_VIDEO="$SVP_ROOT/rea-video/.venv/bin/rea-video"
+else
+  export SVP_REA_VIDEO="$SVP_ROOT/rea-video/.venv/bin/rea-video"
+fi
 
 # Python 自动 GPU 推理钩子（自动预加载虚拟环境内 CUDA/cuDNN 并将 ONNX Runtime 提升至 CUDA/DirectML，不改动配套仓库源码）
 _svp_py_gpu="$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/py_gpu_site"
-case ":${PYTHONPATH:-}:" in
-  *":$_svp_py_gpu:"*) ;;
-  *) export PYTHONPATH="$_svp_py_gpu${PYTHONPATH:+:$PYTHONPATH}" ;;
-esac
+if _svp_py_gpu_win="$(cd "$_svp_py_gpu" && pwd -W 2>/dev/null)"; then
+  case ";${PYTHONPATH:-};" in
+    *";$_svp_py_gpu_win;"*) ;;
+    *) export PYTHONPATH="$_svp_py_gpu_win${PYTHONPATH:+;$PYTHONPATH}" ;;
+  esac
+  unset _svp_py_gpu_win
+else
+  case ":${PYTHONPATH:-}:" in
+    *":$_svp_py_gpu:"*) ;;
+    *) export PYTHONPATH="$_svp_py_gpu${PYTHONPATH:+:$PYTHONPATH}" ;;
+  esac
+fi
 unset _svp_py_gpu
 
 # 仅在当前 shell 会话中把工作区的 node_modules/.bin 放到 PATH 最前，

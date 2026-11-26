@@ -25,8 +25,8 @@
 ### 2. JuneYaooo/rea-video（参考视频拆解与复刻分析）
 
 - 仓库：https://github.com/JuneYaooo/rea-video（默认分支最新提交）
-- 安装位置：`rea-video/`，虚拟环境 `rea-video/.venv`
-- 命令入口：`rea-video/.venv/bin/rea-video`（不在 `PATH` 中，运行 `--help` 查看最新子命令）
+- 安装位置：`rea-video/`，虚拟环境 `rea-video/.venv`（内置 `yt-dlp` 供素材脚本独立复用）
+- 命令入口：执行 `env.sh` 后用 `"$SVP_REA_VIDEO"`（Unix 为 `rea-video/.venv/bin/rea-video`，Windows 为 `rea-video/.venv/Scripts/rea-video.exe`，运行 `--help` 查看最新子命令）
 - **项目自身文档与 Skill 路径（直接使用，随更新自动生效）**：
   - `rea-video/skills/rea-video/SKILL.md`（主流程与规范）
   - `rea-video/skills/rea-video/references/`（全部细则参考，按 `SKILL.md` 指引按需读取）
@@ -34,12 +34,12 @@
 - **本工作区补充约束**：
   - 依赖与 Python 版本要求以 `rea-video/skills/rea-video/references/setup.md` 为准，必须装在 `rea-video/.venv` 中；**不运行**会往系统目录写入的 `scripts/install_skill.sh`。
   - 模型与记忆目录由 `env.sh` 重定向到 `.local/rea-video/`。
-  - 文档中提到的第三方付费/外部复刻执行工具（如 capsule-cinema、ChatCut、HyperFrames）本工作区不安装、不使用，成片统一用 OpenFilm 制作。
+  - 文档中提到的第三方付费/外部复刻执行工具（如 capsule-cinema、ChatCut 及 `code-render` 外部渲染器）本工作区不安装、不使用，成片统一用 OpenFilm 制作。
 
-### 3. 3441293738/creatorhub（账号、采集、下载、多平台发布）
+### 3. 3441293738/creatorhub（可选模块 · 当前默认停用）
 
 - 仓库：https://github.com/3441293738/creatorhub（默认分支最新提交）
-- 安装位置：`creatorhub/`
+- 安装位置：`creatorhub/`（**当前默认停用静置，日常流程不启动 `8000` 服务，仅在用户显式要求启用时按需使用**）
 - 命令入口：在 `creatorhub/` 下执行 `python3 creatorhub.py`（`--help` 查看最新子命令）；本机服务地址 `http://127.0.0.1:8000`
 - **项目自身文档与接口路径（直接使用，随更新自动生效）**：
   - `creatorhub/README.md`（项目总览与平台能力）

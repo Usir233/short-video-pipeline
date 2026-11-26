@@ -1,6 +1,6 @@
 # 热点与素材寻源指南（最优方案）
 
-本文件记录本工作区经过实测对比后选定的**国内外热点寻源**与**分场景素材寻源**方案。所有能力均基于**零新增重型仓库、零常驻额外服务**的原则设计，全部通过两个零外部依赖脚本（复用工作区现有 `playwright-core`、`browsers/ms-playwright/`、`creatorhub/.venv/bin/yt-dlp`、`ffmpeg`）直接调用：
+本文件记录本工作区经过实测对比后选定的**国内外热点寻源**与**分场景素材寻源**方案。所有能力均基于**零新增重型仓库、零常驻额外服务**的原则设计，全部通过两个零外部依赖脚本（复用工作区现有 `playwright-core`、`browsers/ms-playwright/`、`rea-video/.venv` 内的 `yt-dlp`、`ffmpeg`，不依赖 CreatorHub 运行）直接调用：
 
 - 热点拉取：`.agents/skills/short-video-pipeline/scripts/fetch_trends.py`
 - 素材搜抓：`.agents/skills/short-video-pipeline/scripts/fetch_asset.py`
@@ -41,7 +41,7 @@
 | **L1 国内大众热榜** | 抖音、微博、B站、知乎、头条、百度 | 60s Top-3 实例按序降级：`api.cczo.cc/60s` → `60s.mizhoubaobei.top` → `60s.okbaike.com` | NewsNow 国内源（`douyin`/`weibo`/`zhihu`/`bilibili-hot-search`/`thepaper`）→ `hot-search-crawler` |
 | **L2 国内外科技 / 开发者 / 财经** | IT之家（快讯+热榜）、AI 资讯快报、Hacker News、GitHub Trending、Product Hunt、华尔街见闻、财联社、少数派、Solidot、联合早报 | NewsNow API（9 源全通，~2.4s）+ 60s（`/v2/it-news`、`/v2/it-news/rank`、`/v2/ai-news` 超时 ≥15s） | HN Algolia 官方 JSON（`hn.algolia.com`）+ IT之家/少数派原生 RSS |
 | **L3 科技巨头一手官方发布 & 权威外媒** | OpenAI、Google Blog、Google DeepMind、Apple Newsroom、NVIDIA Blog、GitHub Blog、Hugging Face、TechCrunch、The Verge、Ars Technica、Google News 全球科技 | 官网直连 RSS / Atom（1.9s–3.6s，零中间商） | 按主题实时查 Google News RSS（中/英）+ Bing News RSS |
-| **L4 平台内爆款交叉验证** | 小红书、抖音近 7 天最高赞 | 工作区 `CreatorHub` `/api/collections`（`search_sort: most_liked`, `publish_time: week`） | 失败则跳过，不阻塞主流程 |
+| **L4 平台内爆款交叉验证（按需可选）** | 小红书、抖音近 7 天最高赞 | 工作区 `CreatorHub` `/api/collections`（`search_sort: most_liked`, `publish_time: week`） | **当前 CreatorHub 默认停用，日常直接跳过，不阻塞主流程** |
 
 ### 常用命令
 

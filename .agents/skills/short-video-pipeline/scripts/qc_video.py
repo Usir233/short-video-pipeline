@@ -2226,6 +2226,12 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     parser = argparse.ArgumentParser(
         description="Short-video pipeline pre-flight audio probe & post-render QC gate."
     )
