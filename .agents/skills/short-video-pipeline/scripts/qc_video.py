@@ -1818,6 +1818,78 @@ def audit_film_dir(
                     "reports": sync_reports,
                 }
 
+        # 8. Per-slot editing paradigm purity checks (preventing color-swap template cloning!)
+        paradigm_violations: list[str] = []
+        sub_has_pill_box = False
+        if sub_file.exists():
+            sub_css_txt = sub_file.read_text(encoding="utf-8", errors="replace")
+            for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", sub_css_txt, flags=re.IGNORECASE):
+                for cm in re.finditer(r"(?:\.pill|#sub|\.sub-box)\s*\{([^}]*)\}", sb, flags=re.IGNORECASE):
+                    if re.search(
+                        r"background(?:-color)?\s*:\s*(?:rgba?\(|#[0-9a-fA-F]{3,8}|linear-gradient)",
+                        cm.group(1),
+                        flags=re.IGNORECASE,
+                    ):
+                        sub_has_pill_box = True
+
+        if style_slot == "v1":
+            wide_v1_pips = [p for p in details.get("pip_framing_checks", []) if p["visible_box"][2] > 380]
+            if wide_v1_pips:
+                paradigm_violations.append(
+                    f"v1(网感快剪流) 违规使用顶部大矩形讲座 PiP `{wide_v1_pips[0]['id']}`(宽 {wide_v1_pips[0]['visible_box'][2]}px > 380px)，须改为全程全屏多景别硬跳切 + 前景抠像砸字 + 快切 B-roll"
+                )
+            if sub_has_pill_box:
+                paradigm_violations.append(
+                    "v1(网感快剪流) 字幕违规沿用实底半透明胶囊盒，须改用无底框粗描边/重阴影动态撞色蹦字"
+                )
+        elif style_slot == "v2":
+            wide_v2_pips = [p for p in details.get("pip_framing_checks", []) if p["visible_box"][2] > 320]
+            if wide_v2_pips:
+                paradigm_violations.append(
+                    f"v2(全画幅白板图解流) 违规使用宽 {wide_v2_pips[0]['visible_box'][2]}px(>320px) 的大矩形半屏 PiP 挤占画布，须释放 1080x1920 全画幅可推拉白板，说话人仅首尾出镜或缩为 <=240px 角落圆头像徽章"
+                )
+            if sub_has_pill_box:
+                paradigm_violations.append(
+                    "v2(全画幅白板图解流) 字幕违规套用暗色实底胶囊盒，须改用亮底无框印刷黑体 + 关键词荧光笔划词底纹"
+                )
+        elif style_slot == "v3":
+            if sub_has_pill_box:
+                paradigm_violations.append(
+                    "v3(宽银幕电影独白流) 字幕违规套用实底胶囊盒，须改用无任何底框的电影院细字距纯字"
+                )
+            if film_html.exists():
+                st_sec = re.search(
+                    r'<section[^>]*id=["\'][^"\']*sticker[^"\']*["\'][^>]*>(.*?)</section>',
+                    film_html.read_text(encoding="utf-8", errors="replace"),
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+                if st_sec and parse_clips_in_section(st_sec.group(1)):
+                    paradigm_violations.append("v3(宽银幕电影独白流) 违规使用动态贴纸，破坏纯光学电影质感")
+            v3_boxed_scenes: list[str] = []
+            for sf in sorted(scenes_dir.iterdir()):
+                if sf.suffix.lower() != ".html" or sf.name == "subtitles.html":
+                    continue
+                if helper_scene_re.match(sf.name) or re.search(r"(?:outro|ending)", sf.name, re.IGNORECASE):
+                    continue
+                stxt = sf.read_text(encoding="utf-8", errors="replace")
+                body_part = stxt[stxt.lower().find("<body") :] if "<body" in stxt.lower() else stxt
+                has_slash_hud = bool(re.search(r"[A-Z]{3,}[A-Z0-9 _-]*//", body_part))
+                rect_cnt = len(re.findall(r"<rect\b", body_part, flags=re.IGNORECASE))
+                has_wide_box = bool(
+                    re.search(r'class=["\'][^"\']*(?:cine-box|hud-box|paper-card|hud)\b', body_part, re.IGNORECASE)
+                )
+                if has_slash_hud or rect_cnt >= 2 or has_wide_box:
+                    v3_boxed_scenes.append(sf.name)
+            if v3_boxed_scenes:
+                paradigm_violations.append(
+                    f"v3(宽银幕电影独白流) 违规出现方盒卡片/多框SVG图表或科技双斜杠顶标({', '.join(v3_boxed_scenes[:4])})，须改为浅景深人物特写 + 宽银幕三联画 + 纯留白无框金句"
+                )
+
+        if paradigm_violations:
+            details["paradigm_violations"] = paradigm_violations
+            for pv in paradigm_violations:
+                hard_failures.append(f"剪辑范式同质化违规 [{style_slot}]: {pv}")
+
     return details, cut_points, cutout_sticker_points, pip_points
 
 
@@ -1975,6 +2047,184 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
+    film_dir = slot_dir / "film"
+    film_html = film_dir / "film.html"
+    sub_html = film_dir / "scenes" / "subtitles.html"
+    out_dir = slot_dir / "output"
+    mp4s = sorted(out_dir.glob("*.mp4")) if out_dir.exists() else []
+    dur = 0.0
+    if mp4s:
+        try:
+            dur = float(ffprobe_json(mp4s[0]).get("format", {}).get("duration", 0) or 0)
+        except Exception:
+            pass
+
+    fp: dict[str, Any] = {
+        "slot": slot_name,
+        "dir": rel_path(slot_dir),
+        "duration_sec": round(dur, 2),
+        "subtitle_has_pill_box": False,
+        "subtitle_top_px": None,
+        "pip_boxes": [],
+        "lower_third_850_boxes": 0,
+        "double_slash_headers": 0,
+        "asl_sec": None,
+        "fullscreen_speaker_ratio": 0.0,
+        "pip_ratio": 0.0,
+    }
+
+    if sub_html.is_file():
+        stxt = sub_html.read_text(encoding="utf-8", errors="replace")
+        for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", stxt, flags=re.IGNORECASE):
+            wm = re.search(r"\.wrap\s*\{([^}]*)\}", sb, flags=re.IGNORECASE)
+            if wm:
+                fp["subtitle_top_px"] = parse_css_px(wm.group(1), "top")
+            for cm in re.finditer(r"(?:\.pill|#sub|\.sub-box)\s*\{([^}]*)\}", sb, flags=re.IGNORECASE):
+                if re.search(
+                    r"background(?:-color)?\s*:\s*(?:rgba?\(|#[0-9a-fA-F]{3,8}|linear-gradient)",
+                    cm.group(1),
+                    flags=re.IGNORECASE,
+                ):
+                    fp["subtitle_has_pill_box"] = True
+
+    if film_html.is_file():
+        htxt = film_html.read_text(encoding="utf-8", errors="replace")
+        css_rules: dict[str, str] = {}
+        kf_map: dict[str, str] = {}
+        for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", htxt, flags=re.IGNORECASE):
+            kf_map.update(extract_keyframes_blocks(sb))
+            sb_clean = re.sub(r"@keyframes\s+[A-Za-z0-9_-]+\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", sb, flags=re.IGNORECASE)
+            for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb_clean):
+                css_rules[cm.group(1)] = css_rules.get(cm.group(1), "") + ";" + cm.group(2)
+
+        main_m = re.search(r'<section[^>]*id=["\']main-stage["\'][^>]*>(.*?)</section>', htxt, re.I | re.S)
+        pip_m = re.search(r'<section[^>]*id=["\']speaker-pip["\'][^>]*>(.*?)</section>', htxt, re.I | re.S)
+        main_c = parse_clips_in_section(main_m.group(1)) if main_m else []
+        pip_c = parse_clips_in_section(pip_m.group(1)) if pip_m else []
+
+        if main_c and dur > 0:
+            fp["asl_sec"] = round(dur / len(main_c), 2)
+            fs_sec = sum(
+                (c["dur"] or 0.0)
+                for c in main_c
+                if c["tag"] == "video" and re.search(r"(^clip|speaker|talking|master-clip)", Path(c["base_src"]).name, re.I)
+            )
+            fp["fullscreen_speaker_ratio"] = round(min(1.0, fs_sec / dur), 3)
+        if pip_c and dur > 0:
+            pip_sec = sum((c["dur"] or 0.0) for c in pip_c)
+            fp["pip_ratio"] = round(min(1.0, pip_sec / dur), 3)
+            for pc in pip_c:
+                m_css = ";".join([css_rules.get(cls, "") for cls in pc.get("classes", [])] + [pc.get("style", "")])
+                bl = parse_css_px(m_css, "left", 0.0) or 0.0
+                bt = parse_css_px(m_css, "top", 0.0) or 0.0
+                bw = parse_css_px(m_css, "width", 1080.0) or 1080.0
+                bh = parse_css_px(m_css, "height", 1920.0) or 1920.0
+                it, ir, ib, il = resolve_pip_steady_inset(m_css, kf_map, bw, bh)
+                vbox = [round(bl + il), round(bt + it), round(bw - il - ir), round(bh - it - ib)]
+                if vbox not in fp["pip_boxes"]:
+                    fp["pip_boxes"].append(vbox)
+
+    scenes_dir = film_dir / "scenes"
+    if scenes_dir.is_dir():
+        for sf in sorted(scenes_dir.glob("*.html")):
+            if sf.name == "subtitles.html":
+                continue
+            st = sf.read_text(encoding="utf-8", errors="replace")
+            body = st[st.lower().find("<body") :] if "<body" in st.lower() else st
+            if re.search(r"[A-Z]{3,}[A-Z0-9 _-]*//", body):
+                fp["double_slash_headers"] += 1
+            if re.search(r"top\s*:\s*11[2-9]\dpx", st) and re.search(r"width\s*:\s*8[4-7]\dpx", st):
+                fp["lower_third_850_boxes"] += 1
+
+    return fp
+
+
+def cmd_audit_matrix(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    if not run_dir.is_dir():
+        print(f"error: run directory not found: {run_dir}", file=sys.stderr)
+        return 1
+
+    slot_dirs: list[tuple[str, Path]] = []
+    if (run_dir / "master").is_dir():
+        slot_dirs.append(("00-master", run_dir / "master"))
+    var_root = run_dir / "variants"
+    if var_root.is_dir():
+        for vd in sorted(var_root.iterdir()):
+            if vd.is_dir():
+                slot_dirs.append((vd.name, vd))
+
+    hard_failures: list[str] = []
+    warnings: list[str] = []
+    fingerprints = [extract_slot_fingerprint(name, sdir) for name, sdir in slot_dirs]
+
+    # 1. Subtitle box & vertical coordinate clone check
+    pill_slots = [f["slot"] for f in fingerprints if f["subtitle_has_pill_box"]]
+    if len(pill_slots) >= 3:
+        hard_failures.append(
+            f"跨 4 片字幕样式克隆：{len(pill_slots)}/{len(fingerprints)} 片({', '.join(pill_slots)})均使用半透明胶囊底框字幕，违反四槽位互斥字幕体制(仅 00-master 允许杂志底托框，v1 须无框描边蹦字、v2 须无框印刷+荧光笔、v3 须无框电影纯字)"
+        )
+    sub_tops = [(f["slot"], f["subtitle_top_px"]) for f in fingerprints if f["subtitle_top_px"] is not None]
+    if len(sub_tops) >= 3:
+        vals = [v for _, v in sub_tops]
+        if (max(vals) - min(vals)) <= 25.0:
+            desc = ", ".join(f"{s}:{v:.0f}px" for s, v in sub_tops)
+            hard_failures.append(
+                f"跨 4 片字幕坐标克隆：纵向 top 高度几乎完全一致({desc}，极差 <=25px)，存在换色复制模板嫌疑"
+            )
+
+    # 2. Speaker-PiP geometry clone check across slots
+    pip_slots = [(f["slot"], f["pip_boxes"][0]) for f in fingerprints if f["pip_boxes"]]
+    for i in range(len(pip_slots)):
+        for j in range(i + 1, len(pip_slots)):
+            s1, b1 = pip_slots[i]
+            s2, b2 = pip_slots[j]
+            if abs(b1[2] - b2[2]) <= 35 and abs(b1[3] - b2[3]) <= 35 and abs(b1[1] - b2[1]) <= 30:
+                hard_failures.append(
+                    f"跨片画中画(PiP)版式克隆：`{s1}`(可见框 {b1}) 与 `{s2}`(可见框 {b2}) 复用几乎相同的顶部矩形分屏构图，仅换边框颜色！"
+                )
+
+    # 3. Fullscreen lower-third 852px box & 'ENGLISH //' header clone check
+    lt_slots = [f["slot"] for f in fingerprints if f["lower_third_850_boxes"] >= 1]
+    if len(lt_slots) >= 3:
+        hard_failures.append(
+            f"跨片全屏底部横盒套壳克隆：{len(lt_slots)} 片({', '.join(lt_slots)})均套用 top≈1160px + width≈852px 底部信息盒，属换类名/换色伪差异"
+        )
+    slash_slots = [f["slot"] for f in fingerprints if f["double_slash_headers"] >= 1]
+    if len(slash_slots) >= 2:
+        hard_failures.append(
+            f"跨片顶标胶囊套壳克隆：{len(slash_slots)} 片({', '.join(slash_slots)})重复套用 `ENGLISH // 中文` 双斜杠顶标模板"
+        )
+
+    # 4. Pacing & visual-mode separation check
+    v1_fp = next((f for f in fingerprints if f["slot"].startswith("v1")), None)
+    v2_fp = next((f for f in fingerprints if f["slot"].startswith("v2")), None)
+    if v1_fp and v1_fp["asl_sec"] and v1_fp["asl_sec"] > 3.5:
+        hard_failures.append(f"v1 剪辑节奏未拉开差距：ASL={v1_fp['asl_sec']}s > 3.5s 快剪红线")
+    if v2_fp and v2_fp["fullscreen_speaker_ratio"] > 0.35:
+        warnings.append(
+            f"v2 全屏口播占比偏高({v2_fp['fullscreen_speaker_ratio']:.0%} > 35%)，建议释放 80%+ 时长给全画幅动态白板"
+        )
+
+    report = {
+        "run_dir": rel_path(run_dir),
+        "slot_count": len(fingerprints),
+        "fingerprints": fingerprints,
+        "hard_failures": hard_failures,
+        "warnings": warnings,
+        "passed": len(hard_failures) == 0,
+    }
+    if args.out:
+        out_p = Path(args.out)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if hard_failures and not args.no_fail:
+        return 2
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Short-video pipeline pre-flight audio probe & post-render QC gate."
@@ -2002,9 +2252,21 @@ def main() -> int:
     )
     p_render.add_argument(
         "--out-dir",
-        help="Output directory for safezone-grid.png, safezone-tail.png, safezone-cuts.png, safezone-cutouts.png, and qc-report.json",
+        help="Output directory for safezone-grid.png, safezone-tail.png, safezone-cuts.png, safezone-pip.png, safezone-cutouts.png, and qc-report.json",
     )
     p_render.add_argument(
+        "--no-fail",
+        action="store_true",
+        help="Always exit 0 even when hard_failures exist (report-only mode)",
+    )
+
+    p_matrix = sub.add_parser(
+        "audit-matrix",
+        help="Audit Entry E 4-slot structural editing diversity (anti-color-swap-clone gate).",
+    )
+    p_matrix.add_argument("--run-dir", required=True, help="Entry E run directory path")
+    p_matrix.add_argument("--out", help="Optional output JSON report path")
+    p_matrix.add_argument(
         "--no-fail",
         action="store_true",
         help="Always exit 0 even when hard_failures exist (report-only mode)",
@@ -2015,6 +2277,8 @@ def main() -> int:
         return cmd_probe_audio(args)
     if args.cmd == "audit-render":
         return cmd_audit_render(args)
+    if args.cmd == "audit-matrix":
+        return cmd_audit_matrix(args)
     return 1
 
 
