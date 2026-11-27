@@ -47,7 +47,7 @@ description: 在本工作区按固定流程做竖屏短视频（统一只制作 
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
 | 剪辑风格、渲染与特效工艺 | openfilm/openfilm + 本工作区规范与离线 LUT | `node_modules/openfilm/`、`.agents/.../references/`、`.agents/.../assets/luts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/editing-styles.md](references/editing-styles.md) + [references/editing-vfx.md](references/editing-vfx.md) |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（`content_archetype` 诚实钩子契约、四项文案、反论文腔短标题、三层标签、辰奕品牌主张与字段映射） |
-| 三平台定制封面（双轨制：专属系列 + 通用商业杂志） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（Track A「意图电商」口播系列规范；Track B 通用口播 5 套商业杂志拓扑 `C1–C5` 与五维选帧） |
+| 三平台定制封面（通用商业杂志画报） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（人物头顶水平居中标题、顶部居中精确账号 IP 名、5 套商业杂志拓扑 `C1–C5` 与五维选帧） |
 | 母素材与 1 母片 + 4 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、强制固定 1 母片 + 4 延伸子片、防传混命名与 `delivery/` 交付包） |
 | 发布前审核与手动交付（可选 CreatorHub 自动发） | 本工作区规范（可选 3441293738/creatorhub） | `.agents/.../references/`（可选 `creatorhub/`） | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）；仅显式启用 CreatorHub 时另读 [references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
 
@@ -68,14 +68,14 @@ description: 在本工作区按固定流程做竖屏短视频（统一只制作 
 - 「参考爆款」：A 或 B 里加做步骤 2，优先读取 `素材投递区/参考爆款/` 下的参考视频或用工作区 `yt-dlp` 下载公开参考视频（仅显式启用 CreatorHub 时才调用其关键词采集/分享下载）。
 - 「只发抖音」「不发小红书」等：只产出指定平台的文案/封面与分发物料。
 - **全竖版视频与头顶居中封面硬约定**：后续制作的视频**全部统一制作竖版 `1080×1920 (9:16)`，不制作横版视频**；三平台定制封面统一输出对应竖版精确尺寸（**抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`**），且**封面字幕（两行主标题）一律添加到人物头顶上方、水平居中（`text-align: center`）**。
-- 「带封面」「做意图电商封面」：启用 [references/cover-design.md](references/cover-design.md) 双轨封面规范（「意图电商」系列走 Track A 专属模版；其他口播主题走 Track B 通用商业杂志拓扑 `C1–C5`，且**刊头微标必须印对应账号精确 IP 名，严禁串用其它号组名或自造栏目名**），过审后停在 `status: "made"` 交付用户手动连同封面发布。
+- 「带封面」：启用 [references/cover-design.md](references/cover-design.md) 通用商业杂志封面规范（`C1–C5` 拓扑，**顶部刊头微标必须印对应账号精确 IP 名，封面字幕统一置于人物头顶上方水平居中，严禁串用其它号组名或自造栏目名**），过审后停在 `status: "made"` 交付用户手动连同封面发布。
 - 「不做封面」「免封面」：跳过定制封面制作；过审后默认停在 `status: "made"`（`publish_mode: "manual_delivery"`）交付成片与可复制文案。
 - 「启用 CreatorHub 自动发」「用 CreatorHub 发」（或「直接自动发（封面后补）」）：显式开启 CreatorHub 通道，按步骤 0 与步骤 6.4 启动 `127.0.0.1:8000` 并执行串行自动发布（若已制作定制封面则由用户事后去各平台后台补换封面）。
 - 「不带品牌口号」：跳过 [references/copywriting.md](references/copywriting.md) 中的辰奕品牌主张原句与品牌标签。
 - 「先给我看」「只做不发」：做到成片（及按需封面、文案过审）停下，给出产物路径，不提交自动发布。
 - 入口 E 专用附加词：「已处理素材 / 直接当母素材」（跳过粗剪）、「未处理原片 / 先粗剪」（先做话题切割与去口气词并过闸门 1）、「一路跑完」（母素材确认后跳过闸门 2 直接跑完 1 母片 + 4 子片）、「拆四条」或「同内容四风格」（覆盖 4 子片三档自适应切分方式，但子片总数始终强制固定为 4 条）。
 
-没有附加词时：三个平台都做；命中专属封面系列（如「意图电商」→ [references/cover-design.md](references/cover-design.md) Track A）或入口 E 默认开启封面 / 用户要求做封面时按双轨规范出图（非「意图电商」走 Track B 通用商业杂志拓扑 `C1–C5`，绝不混套「意图电商」标题图；单片未命中专属系列且未要求做封面时默认不做定制封面）；**因当前默认停用 CreatorHub，无论是否制作定制封面，全部通过发布前审核后默认均停在 `status: "made"` 交付用户手动发布**。
+没有附加词时：三个平台都做；入口 E 默认全程开启定制封面，单片流程在用户要求做封面时按 [references/cover-design.md](references/cover-design.md) 通用商业杂志拓扑 `C1–C5` 出图（单片未要求做封面时默认不做定制封面）；**因当前默认停用 CreatorHub，无论是否制作定制封面，全部通过发布前审核后默认均停在 `status: "made"` 交付用户手动发布**。
 
 ## 归档规范
 
@@ -311,17 +311,17 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 属于辰奕系列账号（如「老郑AI经营实战」，除非用户显式附加「不带品牌口号」或切换至非辰奕号组）时，在三平台描述中完整融入原句 **「用AI重构经营，让企业持续增长」**，并按规范合理配置 `#辰奕`、`#用AI重构经营`、`#让企业持续增长`。
 - 按 `copywriting.md` 的字段映射表落盘至 `publish/publish.json`（含顶层 `content_archetype` 及各平台 `cover_title`、`short_title`、`tag_candidates`、`topics_display`、`title`、`desc`、`topics`）；视频号 `title` 强制对应无空格、无禁用符号的口语钩子短标题。
 
-### 6.2 制作与自检三平台封面（按需，双轨制匹配）
+### 6.2 制作与自检三平台封面（按需，统一通用商业画报规范）
 
-- **触发条件与双轨路由**：当视频命中专属系列（如「意图电商」系列 → 走 [references/cover-design.md](references/cover-design.md) **Track A**），或用户附加「带封面」/ 走入口 E 开启封面时（非专属系列统一走 [references/cover-design.md](references/cover-design.md) **Track B 通用口播 5 套商业杂志拓扑 `C1–C5`**，绝不跨系列混套「意图电商」金色标题图）；未命中且未要求做封面时跳过。
-- **先整篇读 [references/cover-design.md](references/cover-design.md)** 执行五步工艺：
+- **触发条件**：入口 E 默认开启封面（显式免封面时跳过），单片在用户附加「带封面」或要求做封面时启用 [references/cover-design.md](references/cover-design.md) 通用商业画报规范（`C1–C5` 五套拓扑）；未要求做封面时跳过。
+- **先整篇读 [references/cover-design.md](references/cover-design.md)** 执行四步工艺：
   1. **选片表 `contact-sheet.jpg` 五维选帧（强制前置）**：优先从干净源片抽取候选帧（单片 `16–24` 帧，入口 E `20–30` 帧）拼成 `materials/covers/contact-sheet.jpg` 并看图挑帧（眼神定焦、上唇自然微张不露下排牙、眼镜片无白反光、手势积极、头部不歪斜，严禁垂眼皮半闭眼废帧！同片各平台及跨 5 片取不同截帧）；
-  2. **人物头顶水平居中巨字标题与账号精确 IP 名绑定**：承接 `6.1` 两行 `cover_title`，**统一将封面字幕（两行主标题）放置在人物头顶上方区域、水平居中（`text-align: center`）**，人物头顶适当下移留出干净标题空间（严禁标题压额头/眉眼或沉在画面底部！）；**轨道 B 通用封面必须在顶部刊头居中微标印对应账号精确 IP 名**（入口 E 严格绑定：`00=跨境AI十亿增长局`、`01=时奕聊AI经营`、`02=辰奕AI经营实战`、`03=老郑AI经营实战`、`04=老郑AI经营论`，严禁串台或自造栏目名！Track A 保持原无账号名金色系列版式）；Track B 强制主标题字号：抖音 `≥ 104px`、小红书（`1242` 宽）`≥ 114px`、视频号 `≥ 100px`，禁用小胶囊标签堆砌，亮底 `RGB>185` 禁贴裸抠像；
+  2. **人物头顶水平居中巨字标题与账号精确 IP 名绑定**：承接 `6.1` 两行 `cover_title`，**统一将封面字幕（两行主标题）放置在人物头顶上方区域、水平居中（`text-align: center`）**，人物头顶适当下移留出干净标题空间（严禁标题压额头/眉眼或沉在画面底部！）；**顶部居中刊头微标必须印对应账号精确 IP 名**（入口 E 严格绑定：`00=跨境AI十亿增长局`、`01=时奕聊AI经营`、`02=辰奕AI经营实战`、`03=老郑AI经营实战`、`04=老郑AI经营论`，严禁串台或自造栏目名！）；强制主标题字号：抖音 `≥ 104px`、小红书（`1242` 宽）`≥ 114px`、视频号 `≥ 100px`，禁用小胶囊标签堆砌，亮底 `RGB>185` 禁贴裸抠像；
   3. **严格输出三平台竖版封面精确像素尺寸**：
      - `douyin.png`：**`1080 × 1920 px`**（`9:16`）
      - `xhs.png`：**`1242 × 1660 px`**（约 `3:4` 超清竖版）
      - `shipinhao.png`：**`1080 × 1440 px`**（`3:4` 竖版）
-     写入完整 `covers/cover-spec.json`（含 `track`、`topology`、`account_ip_name`、`title_placement: "overhead_centered"`、`contact_sheet`、`selected_frames`）；
+     写入完整 `covers/cover-spec.json`（含 `topology`、`account_ip_name`、`title_placement: "overhead_centered"`、`contact_sheet`、`selected_frames`）；
   4. **Agent 必须亲自打开全部 PNG 看图逐项核对，并通过 `qc_video.py audit-render` 内置封面硬门禁**，未全部通过不得进入下一步。
 
 ### 6.3 发布前强制审核门禁

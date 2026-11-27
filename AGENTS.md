@@ -40,7 +40,7 @@
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
 | `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考规范（`references/`）、5 套离线校准 3D 调色 LUT（`assets/luts/*.cube`）、环境/寻源/候选检视签收/Python GPU 钩子与合规声画质检脚本（`scripts/env.sh`、`scripts/py_gpu_site/`、`fetch_trends.py`、`fetch_asset.py` 含 `inspect-candidates` 与 `register --shot --fit-reason`、`qc_video.py` 含 `scan-compliance`/`prepare-voice --bleeps`/`normalize-sfx`/`build-bgm-bed`/`stabilize-broll`/`audit-render`/`audit-matrix`） |
-| `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png` 与按系列分类的视觉参考样图 `samples/`；单期/专题标题图属非通用资产，放各自运行目录不入 git） |
+| `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png`） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
 | `rea-video/` | 否 | [JuneYaooo/rea-video](https://github.com/JuneYaooo/rea-video)：拆解参考视频，用于复刻和二创 |
@@ -56,7 +56,7 @@
 - `references/sourcing.md`：国内外热点矩阵、5 类镜头素材寻源方案与 API 素材「候选暂存 → 六维制作要求核验 → 实名签收」强制门禁
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/copywriting.md`：视频号、小红书、抖音发布文案写法（`G0–G4` 五号组人设绑定、`content_archetype` 诚实钩子契约、平台敏感词脱敏、四项文案、反论文腔短标题、禁生造歧义缩略词、三层标签法与辰奕品牌主张融入）
-- `references/cover-design.md`：双轨制三平台竖版口播封面设计规范（统一竖版精确尺寸：抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`；封面字幕/主标题统一置于人物头顶上方水平居中；Track A「意图电商」模板 + Track B 通用 5 套杂志拓扑 `C1–C5`、精确账号 IP 名刊头防串台、20–30 帧五维选帧与巨字视觉锤）
+- `references/cover-design.md`：三平台竖版商业画报封面设计规范（统一竖版精确尺寸：抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`；封面字幕/主标题统一置于人物头顶上方水平居中；5 套异构杂志拓扑 `C1–C5`、精确账号 IP 名刊头防串台、20–30 帧五维选帧与巨字视觉锤）
 - `references/editing-styles.md`：十大短视频剪辑风格总谱（`S01–S10`）、单片路由与入口 E 五号组（`G0–G4`）人设风格对位、8 大类 34 项剪辑蒙太奇刀法（`H1–H6` 黄金 3 秒冷开、`D1–D5` 精剪去口癖、`JL1–JL5` 声画错位与 B-roll 遮切、`C1–C8` 光学运镜、`L1–L7` 版式拓扑、`B1–B8` B-roll 稳像防抖/运镜解耦/六维签收铁律与 `O1–O4` 尾韵）
 - `references/editing-vfx.md`：OpenFilm 特效与动态视觉规范（去框化 Boxless 四定律、10 轨标准栈、7 大类 42 项特效原语 `KT1–KT8`/`DV1–DV8`/`PF1–PF7`/`TR1–TR10`/`AT1–AT5`、`SUB1–SUB6` 零胶囊框五槽等距字幕矩阵、`--of-lut` 调色与同源虚化光学抠像、平台敏感词 `1000Hz`「哔」声屏蔽 +「某X」字幕脱敏、两段式广播级混音管线）
 - `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、`scan-compliance` 敏感词扫描 + `prepare-voice --bleeps` 合规人声母带、粗剪/马赛克确认闸门、母素材确立、强制固定 `00–04` 对应 `G0–G4` 五号组人设对位成片、精确账号 IP 封面防串台与 `delivery/` 统一交付包）

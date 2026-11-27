@@ -3881,7 +3881,6 @@ def audit_covers(
         report["expected_ip_name"] = expected_ip
 
     spec_path = covers_dir / "cover-spec.json"
-    is_track_a_yitu = False
     has_contact_sheet = False
     if spec_path.is_file():
         spec_raw = spec_path.read_text(encoding="utf-8", errors="replace")
@@ -3896,9 +3895,6 @@ def audit_covers(
                 )
         try:
             spec_data = json.loads(spec_raw)
-            series_str = str(spec_data.get("series", "") or spec_data.get("track", "")).lower()
-            if "意图电商" in series_str or "track_a" in series_str:
-                is_track_a_yitu = True
             cs_rel = spec_data.get("contact_sheet")
             if cs_rel:
                 svp = Path(os.environ.get("SVP_ROOT", Path.cwd()))
@@ -3918,9 +3914,8 @@ def audit_covers(
         if md.is_dir() and list(md.glob("*contact*sheet*.*")):
             has_contact_sheet = True
 
-    report["track"] = "Track_A_yitu" if is_track_a_yitu else "Track_B_editorial"
     report["has_contact_sheet"] = has_contact_sheet
-    if not is_track_a_yitu and not has_contact_sheet:
+    if not has_contact_sheet:
         hard_failures.append(
             f"封面选帧流程缺失 [{rel_path(covers_dir)}]：未生成选片表 `materials/covers/contact-sheet.jpg`，严禁盲抽垂眼/露下齿废帧"
         )
@@ -3946,9 +3941,9 @@ def audit_covers(
                 hard_failures.append(
                     f"封面账号 IP 名混乱违规 `{hf.name}`：当前槽位应为「{expected_ip}」，却误印了其他号组 IP 名「{wrong_ip}」"
                 )
-        if not is_track_a_yitu and expected_ip and expected_ip not in vis_txt:
+        if expected_ip and expected_ip not in vis_txt:
             hard_failures.append(
-                f"轨道B封面缺失对应账号 IP 名 `{hf.name}`：刊头微标必须印本槽位精确账号 IP 名「{expected_ip}」，严禁自编泛栏目名或漏印"
+                f"封面缺失对应账号 IP 名 `{hf.name}`：顶部居中刊头微标必须印本槽位精确账号 IP 名「{expected_ip}」，严禁自编泛栏目名或漏印"
             )
 
         # Overhead & horizontally centered cover title check (applies to ALL covers!)
@@ -4012,55 +4007,54 @@ def audit_covers(
                         f"封面字幕行内 translateY 下移违规 `{hf.name}`：大字标题被下推至中下半屏，必须置于人物头顶上方水平居中"
                     )
 
-        if not is_track_a_yitu:
-            font_pxs = [float(x) for x in re.findall(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", htxt, re.I)]
-            max_fs = max(font_pxs) if font_pxs else 0.0
-            req_fs = 110.0 if "xhs" in hf_low else (100.0 if "shipinhao" in hf_low else 104.0)
-            if max_fs < req_fs:
-                hard_failures.append(
-                    f"封面主标题字号过小 `{hf.name}`：最大字号仅 {max_fs:.0f}px(< {req_fs:.0f}px 商业杂志视觉锤下限)"
-                )
-
-            # Detect >=3 small bordered/filled tag pills
-            small_pill_classes: set[str] = set()
-            body_bg_avg: float | None = None
-            has_photo_frame_crop = False
-            for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", htxt, re.I):
-                bm = re.search(r"(?:body|\.canvas|\.page)\s*\{([^}]*)\}", sb, re.I)
-                if bm and body_bg_avg is None:
-                    body_bg_avg = _parse_rgb_avg(bm.group(1))
-                for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb):
-                    cn, cb = cm.group(1), cm.group(2)
-                    cfs = parse_css_px(cb, "font-size")
-                    if (
-                        cfs is not None
-                        and cfs <= 38.0
-                        and re.search(r"border|background", cb, re.I)
-                        and re.search(r"tag|pill|chip|badge|label", cn, re.I)
-                    ):
-                        small_pill_classes.add(cn)
-                    if re.search(r"photo-frame|portrait-frame", cn, re.I) and "overflow: hidden" in cb.lower():
-                        has_photo_frame_crop = True
-
-            body_part = htxt[htxt.lower().find("<body") :] if "<body" in htxt.lower() else htxt
-            pill_occurrences = 0
-            for cn in small_pill_classes:
-                pill_occurrences += len(
-                    re.findall(rf'class=["\'][^"\']*\b{re.escape(cn)}\b', body_part)
-                )
-            if pill_occurrences >= 3:
-                hard_failures.append(
-                    f"封面网页卡片感违规 `{hf.name}`：堆砌了 {pill_occurrences} 个 `<=38px` 小胶囊标签(严禁 >=3 个小签对称排布)"
-                )
-
-            # Detect bare cutout PNG pasted on light background (RGB > 185)
-            has_cutout_img = bool(
-                re.search(r'<img\b[^>]*src=["\'][^"\']*(?:cutout|rembg|nobg|matting)[^"\']*\.png', body_part, re.I)
+        font_pxs = [float(x) for x in re.findall(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", htxt, re.I)]
+        max_fs = max(font_pxs) if font_pxs else 0.0
+        req_fs = 110.0 if "xhs" in hf_low else (100.0 if "shipinhao" in hf_low else 104.0)
+        if max_fs < req_fs:
+            hard_failures.append(
+                f"封面主标题字号过小 `{hf.name}`：最大字号仅 {max_fs:.0f}px(< {req_fs:.0f}px 商业杂志视觉锤下限)"
             )
-            if body_bg_avg is not None and body_bg_avg > 185.0 and has_cutout_img and not has_photo_frame_crop:
-                hard_failures.append(
-                    f"亮底裸抠像脏边缺陷 `{hf.name}`：浅色背景(RGB均值 {body_bg_avg:.0f} > 185)违规直接贴透明抠像 PNG，须改用矩形胶片相框实拍裁切"
-                )
+
+        # Detect >=3 small bordered/filled tag pills
+        small_pill_classes: set[str] = set()
+        body_bg_avg: float | None = None
+        has_photo_frame_crop = False
+        for sb in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", htxt, re.I):
+            bm = re.search(r"(?:body|\.canvas|\.page)\s*\{([^}]*)\}", sb, re.I)
+            if bm and body_bg_avg is None:
+                body_bg_avg = _parse_rgb_avg(bm.group(1))
+            for cm in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb):
+                cn, cb = cm.group(1), cm.group(2)
+                cfs = parse_css_px(cb, "font-size")
+                if (
+                    cfs is not None
+                    and cfs <= 38.0
+                    and re.search(r"border|background", cb, re.I)
+                    and re.search(r"tag|pill|chip|badge|label", cn, re.I)
+                ):
+                    small_pill_classes.add(cn)
+                if re.search(r"photo-frame|portrait-frame", cn, re.I) and "overflow: hidden" in cb.lower():
+                    has_photo_frame_crop = True
+
+        body_part = htxt[htxt.lower().find("<body") :] if "<body" in htxt.lower() else htxt
+        pill_occurrences = 0
+        for cn in small_pill_classes:
+            pill_occurrences += len(
+                re.findall(rf'class=["\'][^"\']*\b{re.escape(cn)}\b', body_part)
+            )
+        if pill_occurrences >= 3:
+            hard_failures.append(
+                f"封面网页卡片感违规 `{hf.name}`：堆砌了 {pill_occurrences} 个 `<=38px` 小胶囊标签(严禁 >=3 个小签对称排布)"
+            )
+
+        # Detect bare cutout PNG pasted on light background (RGB > 185)
+        has_cutout_img = bool(
+            re.search(r'<img\b[^>]*src=["\'][^"\']*(?:cutout|rembg|nobg|matting)[^"\']*\.png', body_part, re.I)
+        )
+        if body_bg_avg is not None and body_bg_avg > 185.0 and has_cutout_img and not has_photo_frame_crop:
+            hard_failures.append(
+                f"亮底裸抠像脏边缺陷 `{hf.name}`：浅色背景(RGB均值 {body_bg_avg:.0f} > 185)违规直接贴透明抠像 PNG，须改用矩形胶片相框实拍裁切"
+            )
 
     return report
 
