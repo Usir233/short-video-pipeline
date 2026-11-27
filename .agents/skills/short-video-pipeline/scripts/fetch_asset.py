@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -27,6 +28,19 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from svp_concurrency import (  # noqa: E402
+    acquire_lease,
+    claim_asset_entry,
+    infer_batch_and_slot,
+    is_asset_claimed,
+)
+
+MAX_IO_WORKERS = 4
 
 UA = "ShortVideoPipeline/1.0 (local-video-workspace; https://github.com/openfilm/openfilm)"
 
@@ -217,9 +231,10 @@ def build_candidate_sheet(files: list[Path], out_sheet: Path) -> tuple[str | Non
         for f in files
         if f.is_file() and (f.suffix.lower() in VIDEO_EXTS or f.suffix.lower() in IMAGE_EXTS)
     ][:8]
-    probes = [probe_visual_candidate(f) for f in valid]
     if not valid:
-        return None, probes
+        return None, []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_IO_WORKERS, len(valid))) as pool:
+        probes = list(pool.map(probe_visual_candidate, valid))
 
     out_sheet.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
@@ -409,26 +424,41 @@ const { chromium } = require(process.env.SVP_PW_MOD);
     env["SHOT_PATH"] = screenshot_path
     env["MAX_IMGS"] = str(args.max_images)
 
-    proc = subprocess.run(
-        ["node", "-e", node_script],
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    with acquire_lease("preview", owner=f"news-page:{slug}", cmd_desc=f"news-page {args.url[:80]}"):
+        proc = subprocess.run(
+            ["node", "-e", node_script],
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     if proc.returncode != 0:
         print(f"抓页失败：{proc.stderr.strip()}", file=sys.stderr)
         return 1
 
     info = json.loads(proc.stdout.strip().splitlines()[-1])
+    raw_imgs = list(info.get("imgs") or [])
+
+    def _dl_news_img(pair: tuple[int, dict[str, Any]]) -> tuple[int, dict[str, Any], Path, bytes] | None:
+        idx_i, im_item = pair
+        try:
+            saved_p = download_file(im_item["src"], out_dir, f"{slug}-tmp-{idx_i}", default_ext=".jpg")
+            data_b = saved_p.read_bytes()
+            return (idx_i, im_item, saved_p, data_b)
+        except Exception:
+            return None
+
     downloaded: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
     img_idx = 0
-    for im in (info.get("imgs") or []):
-        try:
-            saved = download_file(im["src"], out_dir, f"{slug}-tmp", default_ext=".jpg")
-            data_bytes = saved.read_bytes()
+    if raw_imgs:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_IO_WORKERS, len(raw_imgs))) as pool:
+            dl_results = list(pool.map(_dl_news_img, enumerate(raw_imgs, 1)))
+        for item_res in dl_results:
+            if item_res is None:
+                continue
+            _, im, saved, data_bytes = item_res
             digest = hashlib.sha1(data_bytes).hexdigest()
             if len(data_bytes) < 8192 or digest in seen_hashes:
                 saved.unlink(missing_ok=True)
@@ -437,17 +467,16 @@ const { chromium } = require(process.env.SVP_PW_MOD);
             img_idx += 1
             final_path = out_dir / f"{slug}-img{img_idx}{saved.suffix}"
             saved.replace(final_path)
-            rec = {
-                "path": str(final_path),
-                "url": im["src"],
-                "width": im.get("width", 0),
-                "height": im.get("height", 0),
-                "alt": im.get("alt", ""),
-                "size_bytes": len(data_bytes),
-            }
-            downloaded.append(rec)
-        except Exception:
-            continue
+            downloaded.append(
+                {
+                    "path": str(final_path),
+                    "url": im["src"],
+                    "width": im.get("width", 0),
+                    "height": im.get("height", 0),
+                    "alt": im.get("alt", ""),
+                    "size_bytes": len(data_bytes),
+                }
+            )
 
     manifest = {
         "url": args.url,
@@ -802,7 +831,23 @@ def cmd_stock(args: argparse.Namespace) -> int:
         if args.source == "auto" and len(hits) >= args.limit:
             break
 
-    hits = hits[: args.limit]
+    batch_id, slot_id = infer_batch_and_slot(args.out or None, explicit_batch=getattr(args, "batch_id", ""))
+    skipped_claimed = 0
+    if not getattr(args, "no_skip_claimed", False) and batch_id:
+        filtered_hits: list[dict[str, Any]] = []
+        for h in hits:
+            if is_asset_claimed(
+                batch_id=batch_id,
+                slot_id=slot_id,
+                url=str(h.get("url") or ""),
+                title=str(h.get("title") or ""),
+            ):
+                skipped_claimed += 1
+                continue
+            filtered_hits.append(h)
+        hits = filtered_hits
+
+    hits = hits[: max(args.limit, args.download)]
     downloaded: list[dict[str, Any]] = []
     saved_paths: list[Path] = []
     sheet_rel: str | None = None
@@ -811,22 +856,38 @@ def cmd_stock(args: argparse.Namespace) -> int:
         out_dir = Path(args.out)
         slug = slugify(args.query)
         def_ext = ".mp4" if args.kind == "video" else (".mp3" if args.kind == "audio" else ".jpg")
-        for idx, h in enumerate(hits[: args.download], 1):
+        targets_dl = list(enumerate(hits[: args.download], 1))
+
+        def _dl_stock_one(pair: tuple[int, dict[str, Any]]) -> tuple[int, Path | None, dict[str, Any], str]:
+            idx_i, h_item = pair
             try:
-                saved = download_file(h["url"], out_dir, f"{h['source']}-{slug}-{idx}", default_ext=def_ext, timeout=35.0)
-                saved_paths.append(saved)
-                downloaded.append({"file": rel_to_root(saved), "meta": h})
+                sp = download_file(
+                    h_item["url"], out_dir, f"{h_item['source']}-{slug}-{idx_i}", default_ext=def_ext, timeout=35.0
+                )
+                return (idx_i, sp, h_item, "")
             except Exception as exc:
                 safe_dl_err = re.sub(r"key=[^&\s]+", "key=***", str(exc))
-                print(f"[warn] 下载失败 {h['url']}: {safe_dl_err}", file=sys.stderr)
+                return (idx_i, None, h_item, safe_dl_err)
+
+        if targets_dl:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_IO_WORKERS, len(targets_dl))) as pool:
+                for _, sp, h_item, err_msg in pool.map(_dl_stock_one, targets_dl):
+                    if sp is not None:
+                        saved_paths.append(sp)
+                        downloaded.append({"file": rel_to_root(sp), "meta": h_item})
+                    elif err_msg:
+                        print(f"[warn] 下载失败 {h_item['url']}: {err_msg}", file=sys.stderr)
         if args.kind in {"video", "image"} and saved_paths:
             sheet_rel, probes = build_candidate_sheet(saved_paths, out_dir / f"candidate-sheet-{slug}.jpg")
+    hits = hits[: args.limit]
 
     print(
         json.dumps(
             {
                 "query": args.query,
                 "kind": args.kind,
+                "batch_id": batch_id,
+                "skipped_already_claimed": skipped_claimed,
                 "hits": hits,
                 "downloaded_candidates": downloaded,
                 "candidate_sheet": sheet_rel,
@@ -1039,9 +1100,40 @@ def cmd_register(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    assets_dir = Path(args.assets)
+    batch_id, slot_id = infer_batch_and_slot(
+        assets_dir,
+        explicit_batch=getattr(args, "batch_id", ""),
+        explicit_slot=getattr(args, "slot", ""),
+    )
+    is_visual_supp = (
+        (src.suffix.lower() in VIDEO_EXTS or src.suffix.lower() in IMAGE_EXTS)
+        and src.name.lower() != "logo.png"
+        and args.type not in {"voice", "bgm", "sfx", "audio", "speaker_video"}
+    )
+    claim_info: dict[str, Any] | None = None
+    if is_visual_supp and not getattr(args, "allow_duplicate", False):
+        claim_info = claim_asset_entry(
+            batch_id=batch_id,
+            slot_id=slot_id,
+            shot_id=shot_id,
+            url=args.url,
+            title=src.stem,
+            media_file=src,
+        )
+        if not claim_info.get("claimed"):
+            conflict = claim_info.get("conflict_with") or {}
+            print(
+                f"错误：跨槽/同批视觉素材撞车拦截({claim_info.get('reason')})！"
+                f"`{src.name}` 与批次 `{batch_id}` 已认领素材冲突(占用槽位={conflict.get('slot')}, 文件={conflict.get('file')})。\n"
+                "请立即换选 candidate-sheet 中的第 2/3 条候选或更换具象词重新搜索，严禁多片共用同源 B-roll！",
+                file=sys.stderr,
+            )
+            return 3
+
     copied = copy_to_openfilm_areas(
         src,
-        Path(args.assets),
+        assets_dir,
         args.name,
         args.save_reusable,
         {
@@ -1053,9 +1145,11 @@ def cmd_register(args: argparse.Namespace) -> int:
             "shot_id": shot_id,
             "fit_verified": True,
             "fit_reason": fit_reason,
+            "batch_id": batch_id,
+            "dhash": (claim_info.get("entry") or {}).get("dhash") if claim_info else None,
         },
     )
-    print(json.dumps({"shot_id": shot_id, "fit_verified": True, **copied}, ensure_ascii=False, indent=2))
+    print(json.dumps({"shot_id": shot_id, "batch_id": batch_id, "slot": slot_id, "fit_verified": True, **copied}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1086,6 +1180,8 @@ def main() -> int:
     p_stock.add_argument("--download", type=int, default=0, help="下载前 N 条候选到 --out 并自动生成检视拼图（默认 0 仅列出候选）")
     p_stock.add_argument("--out", default="", help="候选暂存目录（如 runs/<目录>/materials）")
     p_stock.add_argument("--assets", default="", help="已禁用直塞：必须先看 candidate-sheet 核验后用 register --shot --fit-reason 签收")
+    p_stock.add_argument("--batch-id", default="", help="可选批次号（默认从 runs/<目录> 自动推断），用于并发过滤已被其它槽位认领的素材")
+    p_stock.add_argument("--no-skip-claimed", action="store_true", help="关闭已认领素材自动预过滤")
     p_stock.add_argument("--save-reusable", action="store_true", help="仅在 register 阶段生效")
     p_stock.set_defaults(func=cmd_stock)
 
@@ -1123,6 +1219,9 @@ def main() -> int:
     p_reg.add_argument("--url", default="")
     p_reg.add_argument("--license", default="")
     p_reg.add_argument("--prompt", default="")
+    p_reg.add_argument("--batch-id", default="", help="可选批次号（默认从 runs/<目录> 自动推断），跨槽/跨期原子判重")
+    p_reg.add_argument("--slot", default="", help="可选槽位标识（如 master / v1 / v2 / v3 / v4，默认从路径自动推断）")
+    p_reg.add_argument("--allow-duplicate", action="store_true", help="豁免跨槽视觉素材唯一性认领校验")
     p_reg.set_defaults(func=cmd_register)
 
     args = p.parse_args()

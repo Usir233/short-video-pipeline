@@ -61,7 +61,7 @@ description: 在本工作区按固定流程做竖屏短视频（统一只制作 
 | 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 0 → 3 → 4 → 5 → 6 → 7 |
 | 「复刻这条」「二创」「做同款」，或给出参考视频要求照着做 | C 复刻 | 0 → 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
 | 「发这条成片」「直接发 xxx.mp4」「帮我整理这个视频的三平台文案/封面」（给出已有成片而非参考视频） | D 已有成片处理交付 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若原成片在工作区外则**只读复制**进 `output/final.mp4`，严禁移动/删除用户源文件；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与发布前审核，默认交付手动发布，仅显式要求启用 CreatorHub 时走自动发布） |
-| 「做母片和4条子片」「一条变四条」「一鱼多吃」「母片裂变」（含旧习惯口令「做母片和3条子片」「一条变三条」，一律强制固定产出 1 母片 + 4 子片，不保留 3 子片分支），或给出「原片 + 配套素材」要求做多风格矩阵裂变 | E 母素材裂变矩阵 | 按 [references/multi-variant.md](references/multi-variant.md) 执行 `E0 → E1(未处理先粗剪+闸门1) → 母素材确立 → E2(完整特效母片+3封面+3文案) → E3(4子片延伸规划+闸门2) → E4(4子片各自独立补素材/剪辑/3封面/3文案) → E5(单条+跨5片审核与路径收口) → E6(生成 delivery/ 交付包与归档)` |
+| 「做母片和4条子片」「一条变四条」「一鱼多吃」「母片裂变」（含旧习惯口令「做母片和3条子片」「一条变三条」，一律强制固定产出 1 母片 + 4 子片，不保留 3 子片分支），或给出「单条原片 / 整夹多条原片 + 配套素材」要求做多风格矩阵裂变 | E 母素材裂变矩阵（支持单条与整夹批量） | 按 [references/multi-variant.md](references/multi-variant.md) 执行：`E0(母素材确立 + probe-speaker-focus 人脸水平质心标定 + 三态配套视觉资产接入/专职可视化子代理) → E1(未处理先粗剪+闸门1) → 带「一路跑完」时前置锁死 master-plan.json 后 00+v1..v4 五槽零等待并发建工程与异构重绘动效（未带「一路跑完」时先出 E2 母片过闸门2再并发 E4 四子片）→ preflight-film 3秒预检 + svp_concurrency.py 全域双池锁排队渲染 → E5(单条+跨5片审核与局部<=2次自愈) → E6(delivery/ 交付包)`；整夹多原片跑批时全机活跃子代理 `≤6`（最多 2 期重叠备料），单期超限故障隔离进 `batch-summary.json` |
 
 指令里的附加词：
 
@@ -213,7 +213,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 1. 查事实、判内容原型与定主旨：视频里出现的数字、时间、说法都要有出处，查不到的不写，出处记进 `topic/topic.json`；明确判定本片 **`content_archetype`**（`diagnostic_resonance` 诊断共鸣 / `actionable_method` 方法实操 / `news_brief` 新闻快讯 / `case_story` 案例拆解），并用一句话写清核心问题与支撑观点，提前对齐后续封面与文案承诺（纯诊断共鸣片严禁后续伪造「破局清单/避坑指南」虚假承诺）。
 2. 写 `script/storyboard.json`：顶层必须显式声明 `content_archetype`、`editing_style`（`S01–S10`）、`color_lut`（对应 `assets/luts/*.cube`）、`cold_open`（`H1–H6` 黄金 3 秒冷开设计）、`time_slices`（EDL 精剪保留区间，切净采访者搭话、推眼镜冷场与「然后最近」「我觉得大家现在」「就是我们讲普遍性」等暖场废话）与 `silence_drops`（全片 1–2 处重锤金句抽空留白秒数）；每镜声明起止秒、`layout`（`L1–L7`）、`cam`（`C1–C8`）、`vfx_modules`（`KT1–KT8` / `DV1–DV8` / `PF1–PF7` / `AT1–AT5`）、`transition_out`（`TR1–TR10`）与 `sfx`，并完成两项强制前置标定：
-   - **① 口播源片人物坐标与景别门禁标定 `speaker_framing`（有出镜口播必做）**：先对源口播片抽 1 帧加 10% 坐标网格，实测并写入源片归一化坐标（头顶 `head_top_v`、眉眼 `eyes_v`、嘴唇 `mouth_v`、下巴 `chin_v`、领麦 `collar_v`、背景净区右界 `clean_bg_right_u` 及头脸跨度 `span_v = chin_v - head_top_v`）。**若 `span_v > 0.42`（中近景大头原片），严禁强缩塞入 `PF4` 人后巨字，须改用 `PF1/PF2/PF3/PF5`**；
+   - **① 口播源片人物水平焦点与景别门禁标定 `speaker_framing` / `speaker_focus`（有出镜口播必做）**：先运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" probe-speaker-focus --video <源口播片> --update-plan script/storyboard.json` 自动测出主讲人面部水平中心百分比 `face_cx_pct`、头顶 `head_top_v`、下巴 `chin_v` 与头脸跨度 `span_v = chin_v - head_top_v`（并抽 1 帧复核背景净区右界 `clean_bg_right_u`）。所有槽位 `<video>` 切近景（如 `C3` 阶梯跳推）时必须按 `probe-speaker-focus` 给出的 `recommended_object_position` 对齐 `face_cx_pct`，使人脸中心稳落在画布 `x = 320..650px`（头脸右缘 `≤ 915px`）居中安全带（严禁右偏撞进 `x > 930px` 点赞禁区！）。**若 `span_v > 0.42`（中近景大头原片），严禁强缩塞入 `PF4` 人后巨字，须改用 `PF1/PF2/PF3/PF5`**；
    - **② 逐镜零复读「真实台词时间戳 → `local_t` → 锚点短词动效」同步表 `cue_sync_map`（先锁 `subtitles.html` 再写分镜，杜绝音画两张皮与复读机回声）**：列出落在本镜 `[clip_at, clip_end]` 内的每条字幕 `cue_start`、换算后的镜内精确触发秒数 **`local_t = round(cue_start - clip_at, 2)`**、提炼自本镜口播原话的 **`≤ 5` 字核心锚点词或真实数值**（与同期底部字幕词面重合度须 `< 50%`，严禁在顶部或胸前挂横幅原样照抄底部字幕！整屏总字数 `≤ 28` 字）与对应去框化（Boxless）动效动作。**严禁跨镜借用上一镜或下一镜台词，严禁生造原话没提过的脑补长词组，严禁拍脑袋填等差延迟或留 `> 1.0s` 空黑框等字！**
    - 入口 A、B：总长 15–30 秒，5–8 镜；第一镜按 `H1–H6` 在 1.5–3 秒内砸出核心冲突或结果，最后一镜按 `O1–O4` 给一句干脆收束。
    - 入口 C：镜数、每镜时长、叙事作用按步骤 2 记下的结构来，文案按新主题重写，不照抄原文案。
@@ -233,7 +233,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - **A. 平台政策敏感词「哔」声消音、人声前置母带、音乐、归一化音效、已有自存素材**：
   - **口播合规敏感词扫描与「1000Hz 哔声 + 某X 字幕」前置母带（有人声必做）**：凡包含真人原片口播或分离干声，先运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" scan-compliance --transcript <ASR.json或.srt> --out <materials/compliance-bleeps.json>` 自动检测国内短视频平台敏感词（跨平台词如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信→某信`、`快手→某手`、`淘宝/拼多多→某宝/某多多`，广告法极限/暴利承诺词、私域导流词、财税电商灰产词及 `死/杀/破产/诈骗` 等高危风控词；正常保留亚马逊/独立站/领星/AI 等业务词）；再运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源视频或vocals.wav> --out <film/assets/voice-treated.m4a> --bleeps <materials/compliance-bleeps.json>` 生成**等长零偏移**广播级压缩润色人声母带（对命中的敏感词精准静音并混入 `-18 dBFS` 标准 `1000Hz`「哔」声，同时下游全部字幕、花字、封面、文案同步替换为 `masked_text` 如 `某音`！若画面含违规平台 Logo/二维码同步打码或裁除）；
   - **配乐与短音效归一化**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`；离线动态贴纸 `sticker` 仅限高冲网感/轻量科普风点缀，商业纪实/电影风禁用）或 `fetch_asset.py stock --kind audio --source openverse`；全部 `<10s` 短音效入 `film/assets/` 后必须运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets` 统一峰值归一化至 `-3.0 dBTP`（自动硬拒真峰值 `< -30 dBTP` 的损坏静音废件）。
-- **B. 无框巨字排印、真实数据动效、流程拓扑**：直接写成 **OpenFilm 去框化（Boxless）动态视觉页面**（1080×1920，调用 [references/editing-vfx.md](references/editing-vfx.md) 的 `KT1–KT8` 动态排印与 `DV1–DV8` 数据模块；无真实数值严禁画伪进度条或空卡片外框）。
+- **B. 具象业务叙事动效、真实数据图解与动态排印**：写成 **OpenFilm `1080×1920` 确定性叙事动效页面**（结合 [references/editing-vfx.md](references/editing-vfx.md) `KT1–KT8`、`DV1–DV8` 与当句真实业务载体——如 AI 对话气泡流、商品/Listing 批注卡、白板因果拆解树、双域对照表；**严禁脱离口播案例手搓“一根弯线+空转正方体”抽象废线，无真实数值严禁画伪进度条，严禁使用 CSS `transition` 或 `setTimeout/setInterval` 非确定性定时器**）。若投递区自带交互 `.html`，必须先剥离闭包/`transition`/`setTimeout` 重构为纯 `window.film.frame(t)` 竖屏安全区页面；若投递区自带时间戳 `.png` 组图，母片按秒数挂 `PF6` 聚光原图，子片 `v1–v3` 读图提取数据重绘为异构原生 HTML 动效。
 - **C. 科技巨头发布新闻 / 产品报道 / 真实产品界面画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再调用 `scripts/fetch_asset.py` 抓取落盘：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、截 1080px 干净官网/真实软件 UI 首屏（供 `PF6` 3D 透视视窗使用，严禁用纯 CSS 假画山寨 App UI）；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
@@ -272,7 +272,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
   - 严禁对未出场元素使用 `opacity: 0.18–0.40` 灰暗幽灵预显（未讲到前保持 `opacity: 0`，命中瞬间干脆入场）；正文最小字号 `≥28px`，禁止 `overflow: hidden` 容器内容溢底裁切；
   - **精剪蒙太奇、去框化 Boxless 特效、光学调色抠像与零胶囊字幕硬规（细则见 [references/editing-styles.md](references/editing-styles.md) 与 [references/editing-vfx.md](references/editing-vfx.md)）**：
     1. **EDL 精剪与黄金 3 秒冷开**：即使输入来自 `已粗剪/`，也必须按 `D1–D5` 裁除开头暖场搭话、推眼镜冷场与口头禅，按 `H1–H6` 做出前 3 秒冷开；严禁在句子中途把连续口播 `<video>` 假切碎凑 ASL；凡 `time_slices` 删句产生的非连续跳切点，必须用 `JL3` 全屏 B-roll 覆盖或 `TR1–TR6` 视觉转场遮切，严禁同机位硬蹦脸；
-    2. **去框化 Boxless 四定律**：严禁 `width ≥ 700px` 且 `height ≥ 450px` 的外层描边面板内再套小方框（仪表盘套娃），单镜描边矩形 `≤ 2` 个，无真实数值（`%`/倍数/金额/年份）严禁画伪进度条或假柱状图；
+    2. **具象业务动效、纯 `frame(t)` 确定性与防半屏死黑铁律**：`master` 与 `v1–v3` 允许围绕当句真实案例构建具象业务容器（对话气泡、商品卡、白板树、对比表，由 `qc_video.py` 双通道扫描 DOM 与 `<script>` 校验业务实体词锚定；`04-v4` 电影独白槽严禁一切 UI 图表）；严禁无真实数值（`%`/倍数/金额/年份）伪造进度条；`scenes/*.html` 严禁出现 CSS `transition` 或 `setTimeout/setInterval`；`L3` 上分屏视频须避让顶部 `y < 180px` 状态栏，下半屏 `y = 720..1300px` 严禁留超半屏死黑空洞；
     3. **3D 调色 LUT 与光学同源虚化抠像**：将选定 `.agents/skills/short-video-pipeline/assets/luts/*.cube` 拷入 `film/looks/`，所有出镜人物 `<video>` 必挂 `--of-lut: url(looks/*.cube)` 与克制 `--of-beauty-*`（戴眼镜必开 `--of-beauty-protect-glasses: 1`）；凡开启 `--of-cutout: 1`（单段控 `≤4.2s`），底层 `main-stage` 必须垫同源 `<video>` 高斯虚化底（`--fx-blur: 24px` + 压暗，严禁直接垫纯 CSS 黑/深色渐变导致发丝溢绿），人物容器 `width ≥ 1080px`（严禁窄框悬空斩断双肩）并配 `--of-cutout-despill: 0.65`；`PF4` 人后巨字仅限 `span_v ≤ 0.42` 远中景且头顶下沉 `y ≥ 640px` 后的 2–4 字单行短词；商业纪实/白板/电影风严禁挂廉价 Emoji 动态贴纸；
     4. **`SUB1–SUB6` 零胶囊框字幕矩阵**：全风格严禁在 `subtitles.html` 使用 `.pill` 半透明圆角底盒！字号 `≥ 40px`（高冲快剪 `52–58px`），单屏净汉字 `≤ 13` 字（严禁单屏含句中逗号拼两短句），标点绝不包进高亮 `<em>/<b>`，全片带高亮词字幕占比控在 `25%–40%`；
     5. **B-roll 运镜解耦、横竖视窗构图与跨轨防叠影**：凡动态 B-roll `<video>` 自身已含运镜或微晃，**严禁再叠加 CSS `scale(...)` 缩放推镜**（防双重运镜放大背景晃动）；非锁死三脚架的 `16:9` 横屏视频优先放入 `L3` 上半屏实景窗或 `L6` 宽银幕窗，避免 `object-fit: cover` 满屏 `1.78×` 放大微晃；跨 `<section>` 切换同主体时上轨提前 `≥0.034s` 收口，连续同机位禁拆段复用同套缩放动画，大景别/亮度跳变必配 `TR1–TR10` 声画成对转场。
@@ -288,12 +288,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 渲染与满血硬件加速：
   - 若源口播视频高于 `1440p`（如 4K `3840×2160`）或关键帧间隔 `> 0.5s`，送入 `film/assets/`（或入口 E 的 `master-assets/clips/`）前先用显卡硬解硬编一次性转出 **快解工作母版**：`ffmpeg -hwaccel cuda -i <源片> -vf "scale=-2:1440" -c:v h264_nvenc -preset p5 -cq 18 -g 8 -c:a copy <目标母片.mp4>`（无 NVIDIA 独显时降级 `-c:v libx264 -preset superfast -crf 16 -g 8`）。`2560×1440` 对竖屏 `1080×1920`（含跳切推镜）无损，且 `-g 8`（`0.26s` 关键帧）可直接命中 OpenFilm `≤0.5s` 快解免检线，省去浏览器硬啃 4K 与各片重复生成 `.film/cache/seek/` 缓存的开销。
   - `--of-cutout: 1`（AI 实时人物抠像）仅在需要「人后立大字 / 电影浅景深虚化」的高潮短镜头（单段控 `≤4.2s`）按需开启，普通全屏口播与顶部常规 PiP 小窗严禁全程常驻挂 `--of-cutout: 1`。
-  - 渲染命令：`openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`：**单条独立渲染统一用 `--workers 6`**；2 条子片同跑各配 `--workers 4`；**4 条子片全并行同时渲染时统一各配 `--workers 2`**，`4 × 2 = 8` 路刚好跑满全机并发 `h264_nvenc` 硬编会话上限且不超限回退软编；内存 `<24GB` 机器自动降为 `2 + 2` 分两波各配 `--workers 4`；仅无独显或内存 `<16GB` 机器降回单路 `--workers 2`）。每次都带 `--out`，不用默认的导出位置。
+  - **Windows 全域浏览器/GPU 令牌桶与渲染前 3 秒预检（强制走 `svp_concurrency.py`）**：因 OpenFilm 原生 `browser-memory.mjs` 在 Windows 下无内存看门狗，所有渲染、抽帧预览与 Playwright 封面截图统一走工作区并发控制器，把全机 Chromium 进程硬封顶在 **`≤ 8` 个**（重渲染池 `2` 槽 × `--workers 3` + 轻量预览池 `2` 槽，内置进程创建时间核验清僵尸锁与 `< 3.5 GB` 可用内存熔断）：
+    - **渲染前 3 秒预检 + 双路 GPU 信号量渲染**：`"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/svp_concurrency.py" render --film-dir . --out ../output/<成片名>.mp4`（自动先执行 `qc_video.py preflight-film` 静态与并行 B-roll 预检，未过预检立即拦截零显卡白跑；单路独占且空闲内存 `≥7.5GB` 时自动升 `--workers 4`，双路并发时自动锁 `--workers 3`）；
+    - **受控关键帧预览与封面截图**：抽帧用 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/svp_concurrency.py" look --film-dir . -- <at秒数>`；Playwright 封面截图脚本用 `svp_concurrency.py exec --pool preview -- node <截图脚本>`。每次渲染都带 `--out`，不用默认导出位置。
 
 出片前自检，全部通过才能进入发布：
 
-- 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
-- **自动化声画、去框化视觉、光学抠像、B-roll 五检、API 素材六维签收与安全区红框门禁（必跑）**：执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、`prepare-voice` 前置润色已挂载且零砖墙削波过载、BGM 非蚊子哼且含闪避/留白床、无幽灵静音或风格违禁音效、开头 3s 零暖场口头禅、无句中假跳切或未遮切同机位蹦脸、**全部补充视觉素材已在 `credits.json` 完成 `shot_id` + `fit_verified=true` + 具体 `fit_reason` 制作要求核验签收**、B-roll 无暗黑片头 `YAVG<18`/无内部硬切 `scdet≥16`/无高频往复晃动 `hf_jerk>2.40px` 或双重运镜 `scale` 打架/无 `dHash` 克隆/无横竖硬塞畸变、出镜 `<video>` 已挂 `--of-lut`、`--of-cutout: 1` 已垫同源虚化视频底且 `width≥1080px`、无仪表盘套娃外框/伪进度条/空黑框等字/字幕复读横幅/`space-between` 漏子块塌陷、`speaker-pip` 纵向 `v1≤22%` 且 `v2≥72%` 未切嘴、字幕零 `.pill` 胶囊框且字号 `≥40px` 单屏无句中逗号、末尾 `0.35s` 无截断人声、无底卡掉入 `y≥1540px`）；**并亲自打开 `output/check/safezone-grid.png`、`output/check/safezone-tail.png`、`output/check/safezone-cuts.png`、`safezone-broll.png`（如有补充 B-roll）、`safezone-pip.png`（如有 PiP）与 `safezone-cutouts.png`（如有抠像/贴纸）目检**，逐项确认：四向安全区干净、B-roll 首中尾帧清晰稳像无黑场且与当句台词语义/影调精准吻合、`speaker-pip` 五官完整无杂墙、抠像双肩完整无绿边、切点无闭眼/双头/亮度暴跌穿帮、结尾收束与 BGM 淡出自然。
+- 每镜至少用 `svp_concurrency.py look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
+- **自动化声画、双通道语义锚定、主讲人居中焦点、像素级空洞拦截、光学抠像、B-roll 五检、API 素材六维签收与安全区红框门禁（必跑）**：执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、`prepare-voice` 前置润色与合规哔声已挂载且零砖墙削波过载、BGM 非蚊子哼且含闪避/留白床、无幽灵静音或风格违禁音效、开头 3s 零暖场口头禅、无句中假跳切或未遮切同机位蹦脸、**主讲人近景人脸中心稳在 `x=320..650px`（右缘 `≤915px`）未偏入右侧点赞禁区、抽帧无下半屏 `>90%` 死黑空洞与顶栏 `y<136px` 分屏越界、双通道 `DOM+Canvas` 命中当句具体业务实体词且零 CSS `transition`/`setTimeout` 非确定性写法**、**全部补充视觉素材已在 `credits.json` 完成 `shot_id` + `fit_verified=true` + 具体 `fit_reason` 制作要求核验签收**、B-roll 4 线程并行硬检通过、出镜 `<video>` 已挂 `--of-lut`、`--of-cutout: 1` 已垫同源虚化视频底且 `width≥1080px`、`speaker-pip` 纵向 `v1≤22%` 且 `v2≥72%` 未切嘴、字幕零 `.pill` 胶囊框且字号 `≥40px` 单屏无句中逗号、末尾 `0.35s` 无截断人声、无底卡掉入 `y≥1540px`）；**并亲自打开 `output/check/safezone-grid.png`、`output/check/safezone-tail.png`、`output/check/safezone-cuts.png`、`safezone-broll.png`（如有）、`safezone-pip.png`（如有）与 `safezone-cutouts.png`（如有）目检**。单槽若未过检仅局部修补该槽（上限 `2` 次）。
 - 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 
@@ -349,17 +351,23 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 按目标平台整理好的可直接复制四项文案（封面标题、表单标题/视频号短标题、视频描述、三层标签候选与空格分隔「本条发布组合」；入口 E 同步指向各交付子目录的 `copy.md`）；
    - 自动发布模式列出每个平台结果和链接；带封面手动发布模式明确提示「已按规范产出并过审，请连同封面在各平台后台手动发布」；以及需要用户处理的其他事项（如账号掉线需补登）。
 
-## 子代理
+## 子代理与多原片批量并发水位（硬规范）
 
 由主 agent 判断要不要派，以及派几个。你没有派子代理的能力时，按步骤顺序自己做完。
+
+**本机并发硬水位（均衡双路档，严禁无上限裂变撑爆内存/显存）**：
+1. **全机同时活跃子代理总数硬上限 `≤ 6` 个**：单条入口 E 最多同时跑 `5` 个槽位制作子代理；当用户一次性输入包含多支原片的文件夹（如 `素材投递区/已粗剪/027/`、`028/` 整夹 7 条视频）时，采用**「顶层批次调度器 → 单期组长子代理（最多 2 期重叠备料）」**两级隔离架构，确保任意时刻全机活跃子代理总数绝不超过 `6` 个，且跨期共享 `.local/locks/` 下的双路渲染锁、双路预览锁与 `asset-claims.json` 防撞账本；
+2. **单槽局部重试与批量故障隔离**：每个槽位抢 GPU 锁前必过 `preflight-film` 3 秒预检；渲染后若仍未过 `audit-render`，仅单槽局部修补重渲（上限 `2` 次），严禁拖累其它已过检槽位；整夹多原片跑批时，若某单期耗尽 2 次重试仍未过硬门禁，在 `runs/batch-<时间>-summary.json` 记为 `status: "needs_attention"`，立即释放锁槽并继续完成其余健康期次。
 
 适合并行派出去的：
 
 - 步骤 2 的拆解和看图复核，与步骤 3 的查事实同时进行。
-- 有多条参考视频时，每条一个子代理做拆解。
-- 步骤 1 取各平台热榜和查小红书热度。
-- 步骤 4 里互不依赖的各镜素材：每个子代理负责若干镜的图片、视频或页面文件。
-- 入口 E（`E4`）：在母片与 `master-plan.json` 通过闸门 2 后，并行派 **4 个子代理**分别负责 `variants/v1-*/`、`variants/v2-*/`、`variants/v3-*/`、`variants/v4-*/` 四个物理隔离目录的独立补素材、独立 OpenFilm 剪辑/渲染/初检与本子片目标平台封面/文案初稿及单条 `publish.json`。
+- 有多条参考视频时，每条一个子代理做拆解（同时活跃数受 `≤ 6` 约束）。
+- 步骤 1 取各平台热榜和查资讯。
+- **`E0` 专职可视化子代理（Visual Explainer Subagent）**：当投递区带交互 `.html` 时负责确定性纯函数 `frame(t)` 重构与竖屏安全区重排；带时间戳 `.png` 组图时负责读图结构化拆解；无配套图时负责锚定口播真实业务案例精写母版 `1080×1920` 叙事动效 HTML 并经 `svp_concurrency.py look` 四帧自检入库（彻底取代剪辑子代理仓促手搓废 SVG）。
+- **入口 E 零等待并发扇出**：
+  - 当指令带「一路跑完」（跳过闸门 2）时，`E0` 母素材、人脸焦点 `face_cx_pct`、母版解说动效基准与 `master/script/master-plan.json` 一锁定，**立即零等待并发派发 `00-master` 与 `v1..v4`（最多 5 个槽位并行写工程与异构重绘动效，消除子片傻等母片 48 分钟的串行空窗）**，各槽写完各自调 `svp_concurrency.py render` 自动排队双路显卡渲染；
+  - 当默认开启闸门 2 时，先完成 `00-master` 与 `master-plan.json` 交用户确认，通过后立即并发派 **4 个子代理**分别负责 `variants/v1-*/`..`variants/v4-*/` 四个物理隔离目录。
 
 必须由主 agent 自己串行做的：
 
