@@ -78,7 +78,7 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode searc
 | **D. 通用实拍动态 B-roll / 行业作业实景 / 情绪空镜** | 1. 查 `openfilm get my-media`（但**严禁跨片改文件名重复使用同一视频，严禁拿欧美地标冒充本土城市**）<br>2. **候选暂存多选一（严禁盲拿 API 第 1 条直塞 `film/assets/`！）**：走本地已接入的 Pixabay 搜 **具象动作词**（如 `"automated warehouse forklift"` 而非宽泛 `"business"`），用 `fetch_asset.py stock --kind video --download 3 --out materials` 先下载 `2–4` 条候选并自动生成 `candidate-sheet-*.jpg`（若用 `openfilm get video-search --orientation portrait --take` 拉取候选，须紧接跑 `fetch_asset.py inspect-candidates` 看图验片，不符立即从 `film/assets/` 删除重挑）<br>3. **亲自看图过「六维制作要求核验」+ 按需 `stabilize-broll` → `register` 实名签收**：逐项核验**台词语义咬合、地域零穿帮/零硬字幕、竖屏构图避让字幕、影调契合剪辑风格、技术清晰稳像（`YAVG≥18`、`scdet<16`、`hf_jerk≤2.40px` 且往复反向率 `≤2.50/s`）**，仅对达标素材跑 `fetch_asset.py register --shot <镜号> --fit-reason "<具体实看说明>"` 签收入 `film/assets/credits.json` | 1. 候选暂存与自动拼图：<br>`"$SVP_PYTHON" .agents/.../fetch_asset.py stock --query "warehouse forklift sorting" --kind video --download 3 --out materials`<br>2. （若用 `openfilm get --take`）补做检视拼图：<br>`"$SVP_PYTHON" .agents/.../fetch_asset.py inspect-candidates --dir film/assets --out materials/candidate-sheet.jpg`<br>3. 轻微晃动稳像：<br>`"$SVP_PYTHON" .agents/.../qc_video.py stabilize-broll --in materials/raw.mp4 --out materials/broll-stab.mp4` |
 | **E. 抽象概念 / 搜不到的专属场景** | 1. Agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生图服务——入片采用 `PF7` 2.5D 景深视差合成，且**严禁将 9:16 竖图塞进 `>2.2×` 扁框造成截肢盲裁**<br>2. 生成视频（全片 ≤2 镜、每镜 ≤6 秒；付费须先获同意）<br>3. 失败或不可用则退回 **B 类 `KT/DV` 无框视觉模组** | Agent 生图 / `openfilm get image` / `openfilm get video` |
 
-> **单次使用与感知哈希（`64-bit dHash`）去重铁律（硬拦截）**：在同一支成片内及入口 E 的 4 个槽位之间，每一份补充视觉素材（图片与视频 B-roll，品牌固定 Logo 与源口播视频除外）不仅文件名不得重复，且经 `qc_video.py` **中心区域 `64-bit dHash` 感知哈希检测汉明距离必须 `> 10`**——严禁把同一段视频微裁切或改两个名字塞进不同子片！
+> **单次使用与感知哈希（`64-bit dHash`）去重铁律（硬拦截）**：在同一支成片内及入口 E 的 **5 个槽位（`00-master` + `v1..v4`）** 之间，每一份补充视觉素材（图片与视频 B-roll，品牌固定 Logo 与源口播视频除外）不仅文件名不得重复，且经 `qc_video.py` **中心区域 `64-bit dHash` 感知哈希检测汉明距离必须 `> 10`**——严禁把同一段视频微裁切或改多个名字塞进不同子片！
 
 ### API 与外部素材「先候选暂存 → 六维制作要求核验 → 实名签收入库」强制门禁（硬拦截）
 
@@ -112,7 +112,7 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode searc
   --license "Pixabay Content License"
 ```
 
-> **入口 E（[multi-variant.md](multi-variant.md)）多项目路径提醒**：在入口 E 中，母片与 3 条延伸子片各自拥有独立目录，调用 `fetch_asset.py` 时务必将 `--out` 与 `--assets` 分别指向对应片目录（如 `runs/<目录>/master/materials` 与 `runs/<目录>/master/film/assets`，或 `runs/<目录>/variants/v1-<风格>/materials` 与 `.../film/assets`），严禁 4 片混写进同一目录。若在深层子目录执行脚本，先 source `env.sh` 后直接使用 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`。
+> **入口 E（[multi-variant.md](multi-variant.md)）多项目路径提醒**：在入口 E 中，母片与 4 条延伸子片（`v1–v4`）各自拥有独立目录，调用 `fetch_asset.py` 时务必将 `--out` 与 `--assets` 分别指向对应片目录（如 `runs/<目录>/master/materials` 与 `runs/<目录>/master/film/assets`，或 `runs/<目录>/variants/v1-<风格>/materials`..`variants/v4-<风格>/materials` 与对应 `film/assets`），严禁 5 片混写进同一目录。若在深层子目录执行脚本，先 source `env.sh` 后直接使用 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`。
 
 ---
 

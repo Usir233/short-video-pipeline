@@ -1,6 +1,6 @@
 ---
 name: short-video-pipeline
-description: 在本工作区按固定流程做竖屏短视频并准备三平台分发物料：支持单条视频（热点/指定主题/复刻/已有成片处理）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 1 完整特效母片 + 3 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布；CreatorHub 当前默认停用，仅显式要求时按需启用）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
+description: 在本工作区按固定流程做竖屏短视频并准备三平台分发物料：支持单条视频（热点/指定主题/复刻/已有成片处理）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 强制固定 1 完整特效母片 + 4 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布；CreatorHub 当前默认停用，仅显式要求时按需启用）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和4条子片」「一条变四条」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
 ---
 
 # 短视频流水线
@@ -10,7 +10,7 @@ description: 在本工作区按固定流程做竖屏短视频并准备三平台�
 本文件面向任何 agent，不依赖某一家的专有工具。只假设你能执行命令、读写文件。其他能力有就用，没有就按「能力不足时的退路」处理。
 
 用户已定：单条流程默认由 agent 从头跑到完，中途不逐步请示；素材由 agent 自行寻找或生成。**两类强制分流/暂停例外**：
-1. **入口 E（母素材 + 1 母片 + 3 子片）的人工确认闸门**：未处理原片完成粗剪（话题分段切割 + 去口气词）后**必须停下向用户汇报确认或追加预处理（如打马赛克）**，确认后才确立「母素材」；母片完整成片与 3 子片规划完成后默认**再次停下确认**（指令带「一路跑完」可跳过第二次暂停）。停在确认闸门时 `run.json` 置 `status: "waiting_approval"`，用户回复后复用原运行目录续跑。
+1. **入口 E（母素材 + 强制固定 1 母片 + 4 子片）的人工确认闸门**：未处理原片完成粗剪（话题分段切割 + 去口气词）后**必须停下向用户汇报确认或追加预处理（如打马赛克）**，确认后才确立「母素材」；母片完整成片与 4 子片规划完成后默认**再次停下确认**（指令带「一路跑完」可跳过第二次暂停）。停在确认闸门时 `run.json` 置 `status: "waiting_approval"`，用户回复后复用原运行目录续跑。
 2. **默认本地审核交付手动发布（CreatorHub 当前默认停用）**：本工作区当前默认停用 CreatorHub（日常运行不检查也不启动 `127.0.0.1:8000` 服务，且 CreatorHub 截至 `v0.6.0` 亦不支持为抖音、小红书、视频号上传自定义视频封面）。全部入口（A–E，无论是否制作定制封面）在做到成片、三平台文案（及按需封面）全部通过 [references/publish-audit.md](references/publish-audit.md) 审核并完成路径规范归集后，默认统一置 `status: "made"` 停下交付用户手动发布；仅当用户显式指令「启用 CreatorHub」「用 CreatorHub 自动发」时，才按 [references/creatorhub-api.md](references/creatorhub-api.md) 启动服务并调用。
 
 ## 一切留在工作区内
@@ -47,8 +47,8 @@ description: 在本工作区按固定流程做竖屏短视频并准备三平台�
 | 素材（自带库 + 网络新闻/官图/视频切片 + 免版权图库） | [openfilm/openfilm](https://github.com/openfilm/openfilm) + `scripts/fetch_asset.py` | `node_modules/openfilm/`、`.agents/.../scripts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill media`）+ [references/sourcing.md](references/sourcing.md) |
 | 剪辑风格、渲染与特效工艺 | openfilm/openfilm + 本工作区规范与离线 LUT | `node_modules/openfilm/`、`.agents/.../references/`、`.agents/.../assets/luts/` | `node_modules/openfilm/SYSTEM_PROMPT.md`、`node_modules/openfilm/manual/`（`openfilm skill film`）、`node_modules/openfilm/SPEC.md` + [references/editing-styles.md](references/editing-styles.md) + [references/editing-vfx.md](references/editing-vfx.md) |
 | 三平台文案撰写（默认全部视频适用） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/copywriting.md](references/copywriting.md)（`content_archetype` 诚实钩子契约、四项文案、反论文腔短标题、三层标签、辰奕品牌主张与字段映射） |
-| 三平台定制封面（双轨制：专属系列 + 通用商业杂志） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（Track A「意图电商」口播系列规范；Track B 通用口播 4 套商业杂志拓扑 `C1–C4` 与五维选帧） |
-| 母素材与 1 母片 + 3 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、1 母片 + 3 延伸子片、防传混命名与 `delivery/` 交付包） |
+| 三平台定制封面（双轨制：专属系列 + 通用商业杂志） | 本工作区规范 + 品牌固定图 | `.agents/skills/short-video-pipeline/references/`、`assets/brand/` | [references/cover-design.md](references/cover-design.md)（Track A「意图电商」口播系列规范；Track B 通用口播 5 套商业杂志拓扑 `C1–C5` 与五维选帧） |
+| 母素材与 1 母片 + 4 风格子片裂变（入口 E） | 本工作区规范 | `.agents/skills/short-video-pipeline/references/` | [references/multi-variant.md](references/multi-variant.md)（粗剪/马赛克闸门、母素材确立、强制固定 1 母片 + 4 延伸子片、防传混命名与 `delivery/` 交付包） |
 | 发布前审核与手动交付（可选 CreatorHub 自动发） | 本工作区规范（可选 3441293738/creatorhub） | `.agents/.../references/`（可选 `creatorhub/`） | [references/publish-audit.md](references/publish-audit.md)（强制审核门禁）；仅显式启用 CreatorHub 时另读 [references/creatorhub-api.md](references/creatorhub-api.md)、`creatorhub/guide/platforms.json`、`/openapi.json` |
 
 各配套仓库的具体命令、参数和能力边界一律以上述相对路径里的项目自身文档为准；本文件及 `references/` 只保留本工作区的目录规范、串联顺序、文案/封面/矩阵裂变规范与安全红线，不再单独手抄维护上游工具明细。
@@ -61,20 +61,20 @@ description: 在本工作区按固定流程做竖屏短视频并准备三平台�
 | 「主题：xxx」「做一条关于 xxx 的」 | B 指定主题 | 0 → 3 → 4 → 5 → 6 → 7 |
 | 「复刻这条」「二创」「做同款」，或给出参考视频要求照着做 | C 复刻 | 0 → 2 → 3 → 4 → 5 → 6 → 7。没给新主题时先走步骤 1 选题 |
 | 「发这条成片」「直接发 xxx.mp4」「帮我整理这个视频的三平台文案/封面」（给出已有成片而非参考视频） | D 已有成片处理交付 | 0 → 6 → 7（跳过制作；用 `ffprobe` 核对分辨率/时长/音轨，工作区内原成片无需再复制一份到 `output/final.mp4`，直接记录其相对路径；若原成片在工作区外则**只读复制**进 `output/final.mp4`，严禁移动/删除用户源文件；按成片内容/轻量抽帧直接按步骤 6 完成三平台文案、按需封面与发布前审核，默认交付手动发布，仅显式要求启用 CreatorHub 时走自动发布） |
-| 「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出「原片 + 配套素材」要求做 1 母片 + 3 条不同风格子片 | E 母素材裂变矩阵 | 按 [references/multi-variant.md](references/multi-variant.md) 执行 `E0 → E1(未处理先粗剪+闸门1) → 母素材确立 → E2(完整特效母片+3封面+3文案) → E3(3子片延伸规划+闸门2) → E4(3子片各自独立补素材/剪辑/3封面/3文案) → E5(单条+跨4片审核与路径收口) → E6(生成 delivery/ 交付包与归档)` |
+| 「做母片和4条子片」「一条变四条」「一鱼多吃」「母片裂变」（含旧习惯口令「做母片和3条子片」「一条变三条」，一律强制固定产出 1 母片 + 4 子片，不保留 3 子片分支），或给出「原片 + 配套素材」要求做多风格矩阵裂变 | E 母素材裂变矩阵 | 按 [references/multi-variant.md](references/multi-variant.md) 执行 `E0 → E1(未处理先粗剪+闸门1) → 母素材确立 → E2(完整特效母片+3封面+3文案) → E3(4子片延伸规划+闸门2) → E4(4子片各自独立补素材/剪辑/3封面/3文案) → E5(单条+跨5片审核与路径收口) → E6(生成 delivery/ 交付包与归档)` |
 
 指令里的附加词：
 
 - 「参考爆款」：A 或 B 里加做步骤 2，优先读取 `素材投递区/参考爆款/` 下的参考视频或用工作区 `yt-dlp` 下载公开参考视频（仅显式启用 CreatorHub 时才调用其关键词采集/分享下载）。
 - 「只发抖音」「不发小红书」等：只产出指定平台的文案/封面与分发物料。
-- 「带封面」「做意图电商封面」：启用 [references/cover-design.md](references/cover-design.md) 双轨封面规范（「意图电商」系列走 Track A 专属模版，其他口播主题走 Track B 通用商业杂志拓扑 `C1–C4`，绝不跨系列混套「意图电商」标题图），过审后停在 `status: "made"` 交付用户手动连同封面发布。
+- 「带封面」「做意图电商封面」：启用 [references/cover-design.md](references/cover-design.md) 双轨封面规范（「意图电商」系列走 Track A 专属模版，其他口播主题走 Track B 通用商业杂志拓扑 `C1–C5`，绝不跨系列混套「意图电商」标题图），过审后停在 `status: "made"` 交付用户手动连同封面发布。
 - 「不做封面」「免封面」：跳过定制封面制作；过审后默认停在 `status: "made"`（`publish_mode: "manual_delivery"`）交付成片与可复制文案。
 - 「启用 CreatorHub 自动发」「用 CreatorHub 发」（或「直接自动发（封面后补）」）：显式开启 CreatorHub 通道，按步骤 0 与步骤 6.4 启动 `127.0.0.1:8000` 并执行串行自动发布（若已制作定制封面则由用户事后去各平台后台补换封面）。
 - 「不带品牌口号」：跳过 [references/copywriting.md](references/copywriting.md) 中的辰奕品牌主张原句与品牌标签。
 - 「先给我看」「只做不发」：做到成片（及按需封面、文案过审）停下，给出产物路径，不提交自动发布。
-- 入口 E 专用附加词：「已处理素材 / 直接当母素材」（跳过粗剪）、「未处理原片 / 先粗剪」（先做话题切割与去口气词并过闸门 1）、「一路跑完」（母素材确认后跳过闸门 2 直接跑完 1 母片 + 3 子片）、「拆三条」或「同内容三风格」（覆盖 3 子片自适应切分策略）。
+- 入口 E 专用附加词：「已处理素材 / 直接当母素材」（跳过粗剪）、「未处理原片 / 先粗剪」（先做话题切割与去口气词并过闸门 1）、「一路跑完」（母素材确认后跳过闸门 2 直接跑完 1 母片 + 4 子片）、「拆四条」或「同内容四风格」（覆盖 4 子片三档自适应切分方式，但子片总数始终强制固定为 4 条）。
 
-没有附加词时：三个平台都做；命中专属封面系列（如「意图电商」→ [references/cover-design.md](references/cover-design.md) Track A）或入口 E 默认开启封面 / 用户要求做封面时按双轨规范出图（非「意图电商」走 Track B 通用商业杂志拓扑 `C1–C4`，绝不混套「意图电商」标题图；单片未命中专属系列且未要求做封面时默认不做定制封面）；**因当前默认停用 CreatorHub，无论是否制作定制封面，全部通过发布前审核后默认均停在 `status: "made"` 交付用户手动发布**。
+没有附加词时：三个平台都做；命中专属封面系列（如「意图电商」→ [references/cover-design.md](references/cover-design.md) Track A）或入口 E 默认开启封面 / 用户要求做封面时按双轨规范出图（非「意图电商」走 Track B 通用商业杂志拓扑 `C1–C5`，绝不混套「意图电商」标题图；单片未命中专属系列且未要求做封面时默认不做定制封面）；**因当前默认停用 CreatorHub，无论是否制作定制封面，全部通过发布前审核后默认均停在 `status: "made"` 交付用户手动发布**。
 
 ## 归档规范
 
@@ -117,17 +117,17 @@ runs/
 
 用不到的目录不建（入口 A、B 不带「参考爆款」时没有 `ref/`；不做定制封面时没有 `covers/`）。不在运行目录的根上另放文件，也不自创别的子目录。
 
-**入口 E（母素材 + 1 母片 + 3 风格子片）扩展目录结构**（完整细则与防传混前缀命名见 [references/multi-variant.md](references/multi-variant.md)）：
+**入口 E（母素材 + 强制固定 1 母片 + 4 风格子片）扩展目录结构**（完整细则与防传混前缀命名见 [references/multi-variant.md](references/multi-variant.md)）：
 
 ```text
 runs/<YYYYMMDD-HHMM>-<话题短名>/
-├── run.json                总控索引（entry: "E"、闸门状态、母素材/4片/交付包路径）
+├── run.json                总控索引（entry: "E"、闸门状态、母素材/5片/交付包路径）
 ├── raw/                    原始输入（原片 + 配套素材登记，原片只读）
 ├── rough-cut/              粗剪话题切片与用户预处理区（仅未处理输入时建）
 ├── master-assets/          【母素材】经确认的最终干净原片切片 + 配套素材 + manifest.json
 ├── master/                 【母片】script/、materials/、film/、output/00-master-*.mp4、covers/00-master-*.png、publish/publish.json
-├── variants/               【3 条延伸子片】v1-<风格>/、v2-<风格>/、v3-<风格>/（同构独立目录，防传混前缀 01-v1 / 02-v2 / 03-v3）
-├── delivery/               【统一交付包】INDEX.md + 00-master/ + 01-v1-*/ + 02-v2-*/ + 03-v3-*/（含成片、3封面、copy.md）
+├── variants/               【4 条延伸子片】v1-<风格>/、v2-<风格>/、v3-<风格>/、v4-<风格>/（同构独立目录，防传混前缀 01-v1 / 02-v2 / 03-v3 / 04-v4）
+├── delivery/               【统一交付包】INDEX.md + 00-master/ + 01-v1-*/ + 02-v2-*/ + 03-v3-*/ + 04-v4-*/（含成片、3封面、copy.md）
 └── tmp/                    草稿和中间文件，运行结束时删掉
 ```
 
@@ -236,7 +236,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - **C. 科技巨头发布新闻 / 产品报道 / 真实产品界面画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再调用 `scripts/fetch_asset.py` 抓取落盘：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、截 1080px 干净官网/真实软件 UI 首屏（供 `PF6` 3D 透视视窗使用，严禁用纯 CSS 假画山寨 App UI）；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
-- **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **优先补充 2–4 段 2–5 秒三脚架/云台稳像真实运动视频（`.mp4`）**：本机已接入免费 **Pixabay**，用具象画面词先跑 `fetch_asset.py stock --kind video --download 3 --out materials`（自动排 `9:16` 竖屏优先、剔除 `timelapse/cartoon/3d render` 并输出 `candidate-sheet-*.jpg`）或 `openfilm get video-search --prompt "..." --orientation portrait`（拉取后补跑 `inspect-candidates`）。**每段候选入 `film/assets/` 前必须看图通过六维制作要求与五项技术硬检**：① 首/中/尾帧亮度 `YAVG ≥ 18`；② 无内部硬切 `scdet < 16`；③ 稳像达标（`hf_jerk ≤ 2.40px` 且往复率 `≤ 2.50/s`，轻微微晃跑 `qc_video.py stabilize-broll`，仍超标直接淘汰换片）；④ 主体动作精准印证当句台词、地域文化与全片影调一致且零内嵌硬字幕/台标；⑤ `64-bit dHash` 唯一且静图禁 `>2.2:1` 畸变盲裁，最后经 `fetch_asset.py register --shot <镜号> --fit-reason "<具体核验说明>"` 实名签收。
+- **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **优先补充 2–4 段 2–5 秒三脚架/云台稳像真实运动视频（`.mp4`）**：本机已接入免费 **Pixabay**，用具象画面词先跑 `fetch_asset.py stock --kind video --download 3 --out materials`（自动排 `9:16` 竖屏优先、剔除 `timelapse/cartoon/3d render` 并输出 `candidate-sheet-*.jpg`）或 `openfilm get video-search --prompt "..." --orientation portrait`（拉取后补跑 `inspect-candidates`）。**每段候选入 `film/assets/` 前必须看图通过六维制作要求与五项技术硬检**：① 首/中/尾帧亮度 `YAVG ≥ 18`；② 无内部硬切 `scdet < 16`；③ 稳像达标（`hf_jerk ≤ 2.40px` 且往复率 `≤ 2.50/s`，轻微微晃跑 `qc_video.py stabilize-broll`，仍超标直接淘汰换片）；④ 主体动作精准印证当句台词、地域文化与全片影调一致且零内嵌硬字幕/台标；⑤ 单片内及入口 E 跨 5 片 `64-bit dHash` 唯一且静图禁 `>2.2:1` 畸变盲裁，最后经 `fetch_asset.py register --shot <镜号> --fit-reason "<具体核验说明>"` 实名签收。
 - **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务——**静态生图入片必须做全画幅或杂志级出血构图并叠加与口播绑定的无框动态排印/光效前景**，禁止塞进小方盒或仅做 5% 慢推；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类去框化代码动效。
 - **单支视频内视觉素材单次使用铁律**：同一支成片内，每一份视觉素材（B-roll `.jpg`/`.mp4`、贴纸、用户配套原图，品牌固定 Logo 与源口播视频除外）**严格仅允许使用 1 次（`count = 1`）**，严禁跨镜复用、同镜双层复用或入口 E 跨片改名复用。
 
@@ -287,7 +287,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 渲染与满血硬件加速：
   - 若源口播视频高于 `1440p`（如 4K `3840×2160`）或关键帧间隔 `> 0.5s`，送入 `film/assets/`（或入口 E 的 `master-assets/clips/`）前先用显卡硬解硬编一次性转出 **快解工作母版**：`ffmpeg -hwaccel cuda -i <源片> -vf "scale=-2:1440" -c:v h264_nvenc -preset p5 -cq 18 -g 8 -c:a copy <目标母片.mp4>`（无 NVIDIA 独显时降级 `-c:v libx264 -preset superfast -crf 16 -g 8`）。`2560×1440` 对竖屏 `1080×1920`（含跳切推镜）无损，且 `-g 8`（`0.26s` 关键帧）可直接命中 OpenFilm `≤0.5s` 快解免检线，省去浏览器硬啃 4K 与各片重复生成 `.film/cache/seek/` 缓存的开销。
   - `--of-cutout: 1`（AI 实时人物抠像）仅在需要「人后立大字 / 电影浅景深虚化」的高潮短镜头（单段控 `≤4.2s`）按需开启，普通全屏口播与顶部常规 PiP 小窗严禁全程常驻挂 `--of-cutout: 1`。
-  - 渲染命令：`openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`：**单条独立渲染统一用 `--workers 6`**；2 条子片同跑各配 `--workers 4`；3 条子片同时并行渲染按 `3 / 3 / 2` 分配 `--workers`，确保全机并发 `h264_nvenc` 硬编会话总数 `≤ 8 路` 吃满显卡且不超限回退软编；仅无独显或内存 `<16GB` 机器降回 `--workers 2`）。每次都带 `--out`，不用默认的导出位置。
+  - 渲染命令：`openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/final.mp4`（入口 E 按 [references/multi-variant.md](references/multi-variant.md) 分别渲染至 `../output/00-master-<话题短名>.mp4` 与 `../output/0N-vN-<风格短名>.mp4`：**单条独立渲染统一用 `--workers 6`**；2 条子片同跑各配 `--workers 4`；**4 条子片全并行同时渲染时统一各配 `--workers 2`**，`4 × 2 = 8` 路刚好跑满全机并发 `h264_nvenc` 硬编会话上限且不超限回退软编；内存 `<24GB` 机器自动降为 `2 + 2` 分两波各配 `--workers 4`；仅无独显或内存 `<16GB` 机器降回单路 `--workers 2`）。每次都带 `--out`，不用默认的导出位置。
 
 出片前自检，全部通过才能进入发布：
 
@@ -312,9 +312,9 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ### 6.2 制作与自检三平台封面（按需，双轨制匹配）
 
-- **触发条件与双轨路由**：当视频命中专属系列（如「意图电商」系列 → 走 [references/cover-design.md](references/cover-design.md) **Track A**），或用户附加「带封面」/ 走入口 E 开启封面时（非专属系列统一走 [references/cover-design.md](references/cover-design.md) **Track B 通用口播 4 套商业杂志拓扑 `C1–C4`**，绝不跨系列混套「意图电商」金色标题图）；未命中且未要求做封面时跳过。
+- **触发条件与双轨路由**：当视频命中专属系列（如「意图电商」系列 → 走 [references/cover-design.md](references/cover-design.md) **Track A**），或用户附加「带封面」/ 走入口 E 开启封面时（非专属系列统一走 [references/cover-design.md](references/cover-design.md) **Track B 通用口播 5 套商业杂志拓扑 `C1–C5`**，绝不跨系列混套「意图电商」金色标题图）；未命中且未要求做封面时跳过。
 - **先整篇读 [references/cover-design.md](references/cover-design.md)** 执行五步工艺：
-  1. **16–24 帧选片表 `contact-sheet.jpg` 五维选帧（强制前置）**：优先从干净源片抽取 16–24 张候选帧拼成 `materials/covers/contact-sheet.jpg` 并看图挑帧（眼神定焦、上唇自然微张不露下排牙、眼镜片无白反光、手势积极、头部不歪斜，严禁垂眼皮半闭眼废帧！同片各平台取不同截帧）；
+  1. **选片表 `contact-sheet.jpg` 五维选帧（强制前置）**：优先从干净源片抽取候选帧（单片 `16–24` 帧，入口 E `20–30` 帧）拼成 `materials/covers/contact-sheet.jpg` 并看图挑帧（眼神定焦、上唇自然微张不露下排牙、眼镜片无白反光、手势积极、头部不歪斜，严禁垂眼皮半闭眼废帧！同片各平台及跨 5 片取不同截帧）；
   2. **按轨道与拓扑渲染巨字视觉锤**：承接 `6.1` 两行 `cover_title`（Track A 核对 `字号 × 字数 ≤ 980px`；Track B 强制主标题 `9:16 ≥ 104px`、`3:4 ≥ 100px`，禁用 `24–36px` 小胶囊标签对称排布、禁用小红书右半屏密集字表，亮底 `RGB>185` 严禁贴裸抠像改用胶片相框实拍裁切，深色底抠像做发丝去绿与边缘受光融合）；
   3. 渲染三平台封面落盘至 `covers/douyin.png`（`1080×1920`）、`covers/shipinhao.png`（`1080×1920`）、`covers/xhs.png`（`1080×1440`），写入完整 `covers/cover-spec.json`（含 `track`、`topology`、`contact_sheet`、`selected_frames`）；
   4. **Agent 必须亲自打开全部 PNG 看图逐项核对，并通过 `qc_video.py audit-render` 内置封面硬门禁**，未全部通过不得进入下一步。
@@ -337,10 +337,10 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 1. 把运行目录的 `run.json` 更新到最终状态，删掉 `tmp/`。（注意：处于 `waiting_approval` 暂候用户确认阶段时，不删续跑所需中间态，也不提前执行第 2 步写 `topics-log.jsonl`，待整单到达终态 `made`/`published`/`partial`/`failed`/`stopped` 时再统一收口。）
 2. 往 `runs/topics-log.jsonl` 追加一行：日期、入口、题目、来源、运行目录、各平台任务 id、状态、作品链接（入口 E 同行附 `publish_mode`、`delivery_dir`、`target_platforms` 与成片数）。整单终止停下、待手动发布或失败的运行也要记一行。
-3. 检查归档与路径规范：运行目录的结构符合「归档规范」，文件名无空格/非法符号，JSON/MD 全部使用相对路径无绝对路径硬编码，这次产生的文件没有留在工作区之外，也没有散在工作区的其他位置（入口 E 另须核对 `delivery/INDEX.md` 及 4 个 `delivery/0N-*/` 子目录内成片、目标平台封面与 `copy.md` 全部齐全非空且与源产物同步一致）。
+3. 检查归档与路径规范：运行目录的结构符合「归档规范」，文件名无空格/非法符号，JSON/MD 全部使用相对路径无绝对路径硬编码，这次产生的文件没有留在工作区之外，也没有散在工作区的其他位置（入口 E 另须核对 `delivery/INDEX.md` 及 5 个 `delivery/0N-*/` 子目录内成片、目标平台封面与 `copy.md` 全部齐全非空且与源产物同步一致）。
 4. 汇报内容：
    - 做了什么题和原因、运行目录和成片路径（入口 E 给出母素材摘要、`delivery/` 总交付路径与 `delivery/INDEX.md` 索引）；
-   - 目标平台定制封面路径（如有；入口 E 按目标平台列出 4 片防传混命名封面路径，默认三平台共 12 张，指定部分平台时为 `4 × M` 张；免封面时省略）；
+   - 目标平台定制封面路径（如有；入口 E 按目标平台列出 5 片防传混命名封面路径，默认三平台共 15 张，指定部分平台时为 `5 × M` 张；免封面时省略）；
    - 按目标平台整理好的可直接复制四项文案（封面标题、表单标题/视频号短标题、视频描述、三层标签候选与空格分隔「本条发布组合」；入口 E 同步指向各交付子目录的 `copy.md`）；
    - 自动发布模式列出每个平台结果和链接；带封面手动发布模式明确提示「已按规范产出并过审，请连同封面在各平台后台手动发布」；以及需要用户处理的其他事项（如账号掉线需补登）。
 
@@ -354,12 +354,12 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 有多条参考视频时，每条一个子代理做拆解。
 - 步骤 1 取各平台热榜和查小红书热度。
 - 步骤 4 里互不依赖的各镜素材：每个子代理负责若干镜的图片、视频或页面文件。
-- 入口 E（`E4`）：在母片与 `master-plan.json` 通过闸门 2 后，并行派 3 个子代理分别负责 `variants/v1-*/`、`variants/v2-*/`、`variants/v3-*/` 三个物理隔离目录的独立补素材、独立 OpenFilm 剪辑/渲染/初检与本子片目标平台封面/文案初稿及单条 `publish.json`。
+- 入口 E（`E4`）：在母片与 `master-plan.json` 通过闸门 2 后，并行派 **4 个子代理**分别负责 `variants/v1-*/`、`variants/v2-*/`、`variants/v3-*/`、`variants/v4-*/` 四个物理隔离目录的独立补素材、独立 OpenFilm 剪辑/渲染/初检与本子片目标平台封面/文案初稿及单条 `publish.json`。
 
 必须由主 agent 自己串行做的：
 
 - 单片流程（入口 A/B/C）写 `film.html`（子代理只写各自页面文件与素材）、单片渲染和出片自检。
-- 入口 E 的粗剪汇报与母素材确立（闸门 1）、母片定调与 3 子片规划（闸门 2）、全部 4 条成片与全部定制封面的最终看图复核、跨 4 片矩阵审核（`E5`）与 `delivery/` 统一交付包组装（`E6`）。
+- 入口 E 的粗剪汇报与母素材确立（闸门 1）、母片定调与 4 子片规划（闸门 2）、全部 5 条成片与全部定制封面的最终看图复核、跨 5 片矩阵审核（`E5`）与 `delivery/` 统一交付包组装（`E6`）。
 - 步骤 6 的全部发布操作。
 - 同一个账号上的 CreatorHub 操作，不要同时发起两个。
 
@@ -368,9 +368,9 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 子代理看不到你的上下文。交代清楚：运行目录、要先读的仓库 skill 的路径、输入文件、要产出的文件路径（按「归档规范」指定到运行目录里的具体位置）、执行命令前先在根目录或按正确层级执行环境脚本 `env.sh`、以及明确权限边界：
   - **公共红线（所有入口子代理严禁）**：不发布、不调用付费生成、不在运行目录之外存放文件、不删改用户的外部源文件；
   - **单片流程子代理额外禁止**：不改主项目的 `film.html`、不做整片渲染与最终文案；
-  - **入口 E（`E4`）子代理隔离授权**：允许在自身专属目录 `variants/vN-<风格>/` 内写该子片的 `film/film.html`、渲染 `output/0N-vN-*.mp4` 并产出本子片封面/文案初稿，但**严禁修改 `raw/`、`master-assets/`、`master/` 及另外两条子片目录**。
+  - **入口 E（`E4`）子代理隔离授权**：允许在自身专属目录 `variants/vN-<风格>/` 内写该子片的 `film/film.html`、渲染 `output/0N-vN-*.mp4` 并产出本子片封面/文案初稿，但**严禁修改 `raw/`、`master-assets/`、`master/` 及另外三条子片目录**。
 - 子代理交回的东西，主 agent 要自己打开文件或看图核对后再用，不只看它的汇报。
-- 不值得派的：单片流程中几分钟内能做完的事、单条视频的各平台文案（入口 E 3 子片因各有独立成片，其初稿随各自子代理在隔离目录产出，回收后由主 agent 在 `E5` 亲自核查与跨片去重）。
+- 不值得派的：单片流程中几分钟内能做完的事、单条视频的各平台文案（入口 E 4 子片因各有独立成片，其初稿随各自子代理在隔离目录产出，回收后由主 agent 在 `E5` 亲自核查与跨片去重）。
 
 ## 能力不足时的退路
 

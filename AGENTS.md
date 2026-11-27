@@ -6,7 +6,7 @@
 
 ## 必须先读
 
-用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「直接发 xxx.mp4」「写三平台文案」「做封面」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时：
+用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「直接发 xxx.mp4」「写三平台文案」「做封面」「做母片和4条子片」「一条变四条」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时：
 
 **先读 `.agents/skills/short-video-pipeline/SKILL.md`，严格按它执行。** 不要让用户重复说明流程，也不要自己另起一套做法。
 
@@ -56,12 +56,12 @@
 - `references/sourcing.md`：国内外热点矩阵、5 类镜头素材寻源方案与 API 素材「候选暂存 → 六维制作要求核验 → 实名签收」强制门禁
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/copywriting.md`：视频号、小红书、抖音发布文案写法（`content_archetype` 诚实钩子契约、四项文案、反论文腔短标题、禁生造歧义缩略词、三层标签法、辰奕品牌主张融入与多片防雷同）
-- `references/cover-design.md`：双轨制三平台口播封面设计规范（Track A「意图电商」专属品牌模版 + Track B 通用口播 4 套商业杂志拓扑 `C1–C4`、16–24 帧 `contact-sheet.jpg` 五维选帧、亮底禁裸抠像与 `≥104px` 巨字视觉锤）
-- `references/editing-styles.md`：十大短视频剪辑风格总谱（`S01–S10`）、单片路由与入口 E 四槽位正交选型、8 大类 34 项剪辑蒙太奇刀法（`H1–H6` 黄金 3 秒冷开、`D1–D5` 精剪去口癖、`JL1–JL5` 声画错位与 B-roll 遮切、`C1–C8` 光学运镜、`L1–L7` 版式拓扑、`B1–B8` B-roll 稳像防抖/运镜解耦/六维签收铁律与 `O1–O4` 尾韵）
-- `references/editing-vfx.md`：OpenFilm 特效与动态视觉规范（去框化 Boxless 四定律、10 轨标准栈、7 大类 42 项特效原语 `KT1–KT8`/`DV1–DV8`/`PF1–PF7`/`TR1–TR10`/`AT1–AT5`、`SUB1–SUB6` 零胶囊框字幕矩阵、`--of-lut` 调色与同源虚化光学抠像、两段式广播级混音管线与声画耦合）
-- `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、`prepare-voice` 人声母带、粗剪/马赛克确认闸门、母素材确立、EDL `time_slices` 精剪冷开、1 完整特效母片 + 3 正交风格子片、防传混命名与 `delivery/` 统一交付包）
+- `references/cover-design.md`：双轨制三平台口播封面设计规范（Track A「意图电商」专属品牌模版 + Track B 通用口播 5 套商业杂志拓扑 `C1–C5`、20–30 帧 `contact-sheet.jpg` 五维选帧、亮底禁裸抠像与 `≥104px` 巨字视觉锤）
+- `references/editing-styles.md`：十大短视频剪辑风格总谱（`S01–S10`）、单片路由与入口 E 五槽位正交选型、8 大类 34 项剪辑蒙太奇刀法（`H1–H6` 黄金 3 秒冷开、`D1–D5` 精剪去口癖、`JL1–JL5` 声画错位与 B-roll 遮切、`C1–C8` 光学运镜、`L1–L7` 版式拓扑、`B1–B8` B-roll 稳像防抖/运镜解耦/六维签收铁律与 `O1–O4` 尾韵）
+- `references/editing-vfx.md`：OpenFilm 特效与动态视觉规范（去框化 Boxless 四定律、10 轨标准栈、7 大类 42 项特效原语 `KT1–KT8`/`DV1–DV8`/`PF1–PF7`/`TR1–TR10`/`AT1–AT5`、`SUB1–SUB6` 零胶囊框五槽等距字幕矩阵、`--of-lut` 调色与同源虚化光学抠像、两段式广播级混音管线与声画耦合）
+- `references/multi-variant.md`：入口 E 完整规范（原片+素材分流、`prepare-voice` 人声母带、粗剪/马赛克确认闸门、母素材确立、EDL `time_slices` 精剪冷开、强制固定 1 完整特效母片 + 4 正交风格子片、防传混命名与 `delivery/` 统一交付包）
 - `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.6.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线（**当前默认停用，仅在用户显式要求启用时参考**）
-- `references/publish-audit.md`：发布前审核门禁（Boxless 动态视觉、调色/光学抠像、声学 `LRA`/闪避床、API 素材六维签收 `asset_fit_signoff`、B-roll `YAVG`/`scdet`/`vidstab` 防抖/`dHash`、零胶囊字幕、双轨封面与诚实钩子全量硬校验、入口 E 跨 4 片反克隆与路径收口门禁）
+- `references/publish-audit.md`：发布前审核门禁（Boxless 动态视觉、调色/光学抠像、声学 `LRA`/闪避床、API 素材六维签收 `asset_fit_signoff`、B-roll `YAVG`/`scdet`/`vidstab` 防抖/`dHash`、零胶囊字幕、双轨封面与诚实钩子全量硬校验、入口 E 跨 5 片反克隆与路径收口门禁）
 
 ## 检索范围与提速约定（面向所有 Agent）
 
