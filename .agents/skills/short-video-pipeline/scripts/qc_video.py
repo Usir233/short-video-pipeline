@@ -10,16 +10,19 @@ Subcommands:
                  soft limiter into an equal-length zero-offset M4A master track.
   normalize-sfx  Peak-normalize short SFX (<10s) to -3.0 dBTP (optional 2.5kHz Foley
                  dip) and hard-reject broken/silent audio files (< -30 dBTP).
-  build-bgm-bed  Parse film.html voice timeline and render an auto-ducked, LRA-tamed
-                 BGM bed with Cold Open swell, Silence Drop windows, and outro fade.
-  audit-render   Inspect rendered MP4 + optional film/, covers/, & publish.json:
-                 - Broadcast acoustic gates (LUFS, LRA >= 3.6 LU, True Peak <= -1.0 dBTP,
-                   brickwall limiter ceiling, first-3.5s warm-up drop, tail 0.35s cut,
-                   all BGM sections ducking/hum/LRA/mood, SFX clusters/ghost/blacklist)
-                 - EDL cutting gates (opening filler hard-ban, mid-sentence fake jump-cut,
-                   unmasked non-contiguous speaker jump-cut)
-                 - B-roll 4-point gates (YAVG < 18 dark leader, internal scdet >= 16,
-                   64-bit center-crop dHash deduplication, aspect-ratio crop distortion)
+  build-bgm-bed   Parse film.html voice timeline and render an auto-ducked, LRA-tamed
+                  BGM bed with Cold Open swell, Silence Drop windows, and outro fade.
+  stabilize-broll Run 2-pass libvidstab optical stabilization on mild-shake B-roll clips
+                  and hard-reject warped/timelapse clips that remain Tier C jittery.
+  audit-render    Inspect rendered MP4 + optional film/, covers/, & publish.json:
+                  - Broadcast acoustic gates (LUFS, LRA >= 3.6 LU, True Peak <= -1.0 dBTP,
+                    brickwall limiter ceiling, first-3.5s warm-up drop, tail 0.35s cut,
+                    all BGM sections ducking/hum/LRA/mood, SFX clusters/ghost/blacklist)
+                  - EDL cutting gates (opening filler hard-ban, mid-sentence fake jump-cut,
+                    unmasked non-contiguous speaker jump-cut)
+                  - B-roll 5-point gates (YAVG < 18 dark leader, internal scdet >= 16,
+                    64-bit center-crop dHash deduplication, aspect-ratio crop distortion,
+                    vidstab high-frequency shake/jitter & double-motion scale clash)
                  - Boxless visual & optical gates (--of-lut presence, --of-cutout width
                    & homologous blurred video bed, nested dashboard panel ban, >=4 SVG
                    rect ban, fake progress bar without numbers, >1.0s blank skeleton wait,
@@ -46,6 +49,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import wave
 from pathlib import Path
 from typing import Any
@@ -322,8 +326,180 @@ def hamming_dist(a: int, b: int) -> int:
     return (a ^ b).bit_count()
 
 
-def inspect_video_broll_segment(src_file: Path, t_in: float, dur: float) -> dict[str, Any]:
-    """Check a video B-roll segment for dark unexposed leader (YAVG < 18) and internal cuts (scdet >= 16)."""
+def measure_broll_stability(
+    src_file: Path,
+    t_in: float = 0.0,
+    dur: float = 4.0,
+    box_w: float = 1080.0,
+    box_h: float = 1920.0,
+) -> dict[str, Any]:
+    """Measure inter-frame high-frequency shake & oscillation via FFmpeg vidstabdetect ASCII vectors."""
+    out: dict[str, Any] = {
+        "hf_jerk_px": 0.0,
+        "reversals_per_sec": 0.0,
+        "mean_speed_px": 0.0,
+        "osc_span_px": 0.0,
+        "stage_mag": 1.69,
+        "stability_tier": "A_stable",
+    }
+    if not src_file.is_file() or dur <= 0.25:
+        return out
+
+    src_w, src_h, fps = 1920.0, 1080.0, 30.0
+    try:
+        pinfo = ffprobe_json(src_file)
+        vs = next((s for s in pinfo.get("streams", []) if s.get("codec_type") == "video"), None)
+        if vs:
+            src_w = float(vs.get("width") or 1920.0)
+            src_h = float(vs.get("height") or 1080.0)
+            rfr = str(vs.get("r_frame_rate") or "30/1")
+            if "/" in rfr:
+                num_s, den_s = rfr.split("/", 1)
+                if float(den_s) > 0:
+                    fps = max(10.0, min(120.0, float(num_s) / float(den_s)))
+            elif float(rfr) > 0:
+                fps = float(rfr)
+    except Exception:
+        pass
+
+    proxy_w = 640.0
+    proxy_h = max(2.0, round((src_h * proxy_w / max(1.0, src_w)) / 2.0) * 2.0)
+    stage_mag = max(box_w / proxy_w, box_h / proxy_h)
+    out["stage_mag"] = round(stage_mag, 2)
+
+    eval_dur = min(max(0.3, dur), 4.0)
+    lm_re = re.compile(
+        r"\(\s*LM\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+\d+\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)"
+    )
+
+    def _trimmed_mean(vals: list[float]) -> float:
+        if not vals:
+            return 0.0
+        sv = sorted(vals)
+        k = int(len(sv) * 0.2)
+        core = sv[k : len(sv) - k] if (len(sv) - 2 * k) >= 1 else sv
+        return sum(core) / len(core)
+
+    frame_vecs: list[tuple[float, float]] = []
+    with tempfile.TemporaryDirectory(prefix="svp_vsd_") as tmpdir:
+        trf_path = Path(tmpdir) / "transforms.trf"
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            f"{max(0.0, t_in):.3f}",
+            "-t",
+            f"{eval_dur:.3f}",
+            "-i",
+            str(src_file.resolve()),
+            "-vf",
+            "scale=640:-2,vidstabdetect=shakiness=7:accuracy=15:fileformat=ascii:result=transforms.trf",
+            "-an",
+            "-f",
+            "null",
+            "-",
+        ]
+        subprocess.run(
+            cmd,
+            cwd=tmpdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if not trf_path.is_file():
+            return out
+        for line in trf_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.startswith("Frame "):
+                continue
+            hi_x: list[float] = []
+            hi_y: list[float] = []
+            all_x: list[float] = []
+            all_y: list[float] = []
+            for m in lm_re.finditer(line):
+                dx_v = float(m.group(1))
+                dy_v = float(m.group(2))
+                ct_v = float(m.group(3))
+                all_x.append(dx_v)
+                all_y.append(dy_v)
+                if ct_v >= 0.35:
+                    hi_x.append(dx_v)
+                    hi_y.append(dy_v)
+            use_x = hi_x if len(hi_x) >= 3 else all_x
+            use_y = hi_y if len(hi_y) >= 3 else all_y
+            frame_vecs.append((_trimmed_mean(use_x) * stage_mag, _trimmed_mean(use_y) * stage_mag))
+
+    # Drop frame 1 (vidstab reference frame with empty motion list)
+    if len(frame_vecs) > 1:
+        frame_vecs = frame_vecs[1:]
+    if len(frame_vecs) < 4:
+        return out
+
+    speeds = [math.hypot(vx, vy) for vx, vy in frame_vecs]
+    jerks = [
+        math.hypot(frame_vecs[i][0] - frame_vecs[i - 1][0], frame_vecs[i][1] - frame_vecs[i - 1][1])
+        for i in range(1, len(frame_vecs))
+    ]
+
+    def _count_reversals(seq: list[float], deadzone: float = 0.45) -> int:
+        signs = [1 if v >= deadzone else (-1 if v <= -deadzone else 0) for v in seq]
+        nz = [s for s in signs if s != 0]
+        return sum(1 for a, b in zip(nz, nz[1:]) if a != b)
+
+    rev_cnt = max(
+        _count_reversals([v[0] for v in frame_vecs]),
+        _count_reversals([v[1] for v in frame_vecs]),
+    )
+    analyzed_sec = max(0.35, len(frame_vecs) / fps)
+    rev_per_sec = rev_cnt / analyzed_sec
+    hf_jerk = sum(jerks) / len(jerks)
+    mean_spd = sum(speeds) / len(speeds)
+
+    # Detrended cumulative oscillation span
+    n_f = len(frame_vecs)
+    tot_x = sum(v[0] for v in frame_vecs)
+    tot_y = sum(v[1] for v in frame_vecs)
+    cx_list: list[float] = []
+    cy_list: list[float] = []
+    acc_x = 0.0
+    acc_y = 0.0
+    for idx, (vx, vy) in enumerate(frame_vecs, 1):
+        acc_x += vx
+        acc_y += vy
+        cx_list.append(acc_x - tot_x * (idx / n_f))
+        cy_list.append(acc_y - tot_y * (idx / n_f))
+    osc_span = max(max(cx_list) - min(cx_list), max(cy_list) - min(cy_list))
+
+    if hf_jerk > 2.40 or rev_per_sec > 2.50:
+        tier = "C_severe_jitter"
+    elif hf_jerk > 1.25 or rev_per_sec > 1.25:
+        tier = "B_mild_shake"
+    else:
+        tier = "A_stable"
+
+    out.update(
+        {
+            "hf_jerk_px": round(hf_jerk, 2),
+            "reversals_per_sec": round(rev_per_sec, 2),
+            "mean_speed_px": round(mean_spd, 2),
+            "osc_span_px": round(osc_span, 2),
+            "stability_tier": tier,
+        }
+    )
+    return out
+
+
+def inspect_video_broll_segment(
+    src_file: Path,
+    t_in: float,
+    dur: float,
+    box_w: float = 1080.0,
+    box_h: float = 1920.0,
+) -> dict[str, Any]:
+    """Check a video B-roll segment for dark leader (YAVG < 18), internal cuts (scdet >= 16), and high-frequency shake."""
     res: dict[str, Any] = {
         "yavg_min": None,
         "dark_consecutive": 0,
@@ -400,7 +576,120 @@ def inspect_video_broll_segment(src_file: Path, t_in: float, dur: float) -> dict
         if scores:
             res["max_scdet_score"] = round(max(scores), 2)
             res["scdet_times"] = times
+
+    res.update(measure_broll_stability(src_file, t_in, dur, box_w=box_w, box_h=box_h))
     return res
+
+
+def cmd_stabilize_broll(args: argparse.Namespace) -> int:
+    in_path = Path(args.input)
+    out_path = Path(args.out)
+    if not in_path.is_file():
+        print(f"error: input B-roll video not found: {in_path}", file=sys.stderr)
+        return 1
+
+    before = measure_broll_stability(
+        in_path, t_in=args.ss, dur=args.dur or 5.0, box_w=args.box_w, box_h=args.box_h
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="svp_stab_") as tmpdir:
+        ss_args = ["-ss", f"{args.ss:.3f}"] if args.ss > 0 else []
+        dur_args = ["-t", f"{args.dur:.3f}"] if args.dur and args.dur > 0 else []
+        det_opts = "shakiness=8:accuracy=15:result=transforms.trf" + (":tripod=1" if args.tripod else "")
+        p1 = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *ss_args,
+                *dur_args,
+                "-i",
+                str(in_path.resolve()),
+                "-vf",
+                f"vidstabdetect={det_opts}",
+                "-an",
+                "-f",
+                "null",
+                "-",
+            ],
+            cwd=tmpdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if p1.returncode != 0 or not (Path(tmpdir) / "transforms.trf").is_file():
+            print(f"error: vidstabdetect failed: {p1.stderr.strip()}", file=sys.stderr)
+            return 2
+
+        smooth_v = 0 if args.tripod else max(4, args.smoothing)
+        tr_opts = (
+            f"input=transforms.trf:smoothing={smooth_v}:optzoom=1:zoom=2.5:interpol=bicubic"
+            + (":tripod=1" if args.tripod else "")
+        )
+        p2 = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *ss_args,
+                *dur_args,
+                "-i",
+                str(in_path.resolve()),
+                "-vf",
+                f"vidstabtransform={tr_opts},unsharp=5:5:0.4:3:3:0.0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "17",
+                "-g",
+                "8",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+                str(out_path.resolve()),
+            ],
+            cwd=tmpdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if p2.returncode != 0 or not out_path.is_file():
+            print(f"error: vidstabtransform failed: {p2.stderr.strip()}", file=sys.stderr)
+            return 2
+
+    after = measure_broll_stability(
+        out_path, t_in=0.0, dur=args.dur or 5.0, box_w=args.box_w, box_h=args.box_h
+    )
+    still_severe = after["stability_tier"] == "C_severe_jitter"
+    if still_severe and not args.keep_failed:
+        out_path.unlink(missing_ok=True)
+
+    report = {
+        "status": "rejected_still_jittery" if still_severe else "ok",
+        "input": rel_path(in_path),
+        "output": None if (still_severe and not args.keep_failed) else rel_path(out_path),
+        "before": before,
+        "after": after,
+        "passed": not still_severe,
+    }
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if still_severe:
+        print(
+            "error: clip remains Tier C jittery after 2D stabilization (perspective warp / timelapse oscillation); discard and replace with a clean Pixabay tripod/gimbal clip.",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1093,13 +1382,17 @@ def resolve_pip_steady_inset(
 
 def resolve_max_scale_in_css(merged_css: str, keyframes_map: dict[str, str]) -> float:
     scales = [1.0]
-    for sm in re.finditer(r"scale\(\s*(\d+(?:\.\d+)?)\s*\)", merged_css, flags=re.IGNORECASE):
-        scales.append(float(sm.group(1)))
+    scale_pat = re.compile(
+        r"(?:scale\(\s*(\d+(?:\.\d+)?)|(?:^|[;{\s])scale\s*:\s*(\d+(?:\.\d+)?))",
+        flags=re.IGNORECASE,
+    )
+    for sm in scale_pat.finditer(merged_css):
+        scales.append(float(sm.group(1) or sm.group(2)))
     for am in re.finditer(r"animation(?:-name)?\s*:\s*([A-Za-z0-9_-]+)", merged_css, flags=re.IGNORECASE):
         kf_body = keyframes_map.get(am.group(1), "")
-        for sm in re.finditer(r"scale\(\s*(\d+(?:\.\d+)?)\s*\)", kf_body, flags=re.IGNORECASE):
-            scales.append(float(sm.group(1)))
-    return max(scales)
+        for sm in scale_pat.finditer(kf_body):
+            scales.append(float(sm.group(1) or sm.group(2)))
+    return max(scales, key=lambda v: abs(v - 1.0))
 
 
 def strip_html(text: str) -> str:
@@ -2722,9 +3015,10 @@ def audit_film_dir(
                     f"全片高亮词字幕泛滥：{hl_cue_cnt}/{len(raw_cues_html)} ({hl_cue_cnt/len(raw_cues_html):.0%} > 50%)，须精选 25%-40% 核心重音词"
                 )
 
-    # 6. Supplemental B-roll 4-point inspection (single-use, YAVG, scdet, 64-bit dHash, aspect ratio)
+    # 6. Supplemental B-roll 5-point inspection (single-use, YAVG, scdet, 64-bit dHash, aspect ratio, vidstab shake & double-motion)
     visual_asset_counts: dict[str, int] = {}
-    supplemental_files: dict[str, tuple[Path, str, float, float]] = {}  # bn -> (path, kind, t_in, dur)
+    # bn -> (path, kind, t_in, dur, box_w, box_h, max_scale)
+    supplemental_files: dict[str, tuple[Path, str, float, float, float, float, float]] = {}
     broll_video_count = 0
 
     if film_html.exists():
@@ -2740,7 +3034,7 @@ def audit_film_dir(
                 visual_asset_counts[bn] = visual_asset_counts.get(bn, 0) + 1
                 fp_img = film_dir / rel_s
                 if fp_img.is_file() and bn not in supplemental_files:
-                    supplemental_files[bn] = (fp_img, "image", 0.0, 0.0)
+                    supplemental_files[bn] = (fp_img, "image", 0.0, 0.0, 1080.0, 1920.0, 1.0)
 
         for vc in main_clips:
             if vc["tag"] != "video":
@@ -2756,8 +3050,15 @@ def audit_film_dir(
             if v_dur is None and vf.is_file():
                 v_dur = max(0.0, float(ffprobe_json(vf).get("format", {}).get("duration", 0) or 0) - t_in)
             v_dur = v_dur or 3.0
+            v_css = merged_clip_css(vc)
+            bw = parse_css_px(v_css, "width", 1080.0) or 1080.0
+            bh = parse_css_px(v_css, "height", 1920.0) or 1920.0
+            it, ir, ib, il = resolve_pip_steady_inset(v_css, keyframes_map, bw, bh)
+            vis_bw = max(160.0, bw - il - ir)
+            vis_bh = max(160.0, bh - it - ib)
+            max_sc = resolve_max_scale_in_css(v_css, keyframes_map)
             if vf.is_file():
-                supplemental_files[bn] = (vf, "video", t_in, v_dur)
+                supplemental_files[bn] = (vf, "video", t_in, v_dur, vis_bw, vis_bh, max_sc)
                 broll_samples.extend(
                     [
                         (vf, round(t_in + min(0.12, v_dur * 0.1), 2)),
@@ -2824,7 +3125,45 @@ def audit_film_dir(
                         cand_p = (film_dir / raw_ref).resolve()
                     if cand_p.is_file() and bn not in supplemental_files:
                         is_vid = cand_p.suffix.lower() in {".mp4", ".webm", ".mov"}
-                        supplemental_files[bn] = (cand_p, "video" if is_vid else "image", 0.0, 3.0)
+                        sc_bw, sc_bh, sc_max = 1080.0, 1920.0, 1.0
+                        if is_vid:
+                            sf_kf: dict[str, str] = {}
+                            sf_cls: dict[str, str] = {}
+                            for s_blk in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", txt, re.I):
+                                sf_kf.update(extract_keyframes_blocks(s_blk))
+                                s_clean = re.sub(
+                                    r"@keyframes\s+[A-Za-z0-9_-]+\s*\{(?:[^{}]|\{[^{}]*\})*\}",
+                                    "",
+                                    s_blk,
+                                    flags=re.I,
+                                )
+                                for cm_v in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", s_clean):
+                                    sf_cls[cm_v.group(1)] = sf_cls.get(cm_v.group(1), "") + ";" + cm_v.group(2)
+                            vm = re.search(
+                                rf'<video\b([^>]*src=["\'][^"\']*{re.escape(Path(raw_ref).name)}[^"\']*["\'][^>]*)>',
+                                txt,
+                                re.I,
+                            )
+                            if vm:
+                                v_at = vm.group(1)
+                                vc_m = re.search(r'\bclass=["\']([^"\']+)["\']', v_at, re.I)
+                                vs_m = re.search(r'\bstyle=["\']([^"\']+)["\']', v_at, re.I)
+                                v_mcss = ";".join(
+                                    ([sf_cls.get(c, "") for c in vc_m.group(1).split()] if vc_m else [])
+                                    + ([vs_m.group(1)] if vs_m else [])
+                                )
+                                sc_bw = parse_css_px(v_mcss, "width", 1080.0) or 1080.0
+                                sc_bh = parse_css_px(v_mcss, "height", 1920.0) or 1080.0
+                                sc_max = resolve_max_scale_in_css(v_mcss, sf_kf)
+                        supplemental_files[bn] = (
+                            cand_p,
+                            "video" if is_vid else "image",
+                            0.0,
+                            3.0,
+                            sc_bw,
+                            sc_bh,
+                            sc_max,
+                        )
                         broll_samples.append((cand_p, 0.5 if is_vid else None))
 
                 # Boxless, fake progress bar, image crop distortion & space-between child counts
@@ -2876,19 +3215,21 @@ def audit_film_dir(
             reused_desc = ", ".join(f"{k}({v}次)" for k, v in sorted(reused_assets.items()))
             hard_failures.append(f"违反单支视频视觉素材仅用1次红线: {reused_desc}")
 
-        # Run B-roll video YAVG/scdet & 64-bit dHash checks on supplemental_files
+        # Run B-roll video YAVG/scdet/stability/double-motion & 64-bit dHash checks on supplemental_files
         broll_qc: list[dict[str, Any]] = []
         dhash_map: list[tuple[str, int]] = []
-        for bn, (fpath, kind, t_in, v_dur) in sorted(supplemental_files.items()):
+        for bn, (fpath, kind, t_in, v_dur, vis_bw, vis_bh, max_sc) in sorted(supplemental_files.items()):
             dh = compute_visual_dhash(fpath, sample_t=(t_in + v_dur * 0.5) if kind == "video" else None)
             if dh is not None:
                 dhash_map.append((bn, dh))
             if kind == "image" and (fpath, None) not in broll_samples:
                 broll_samples.append((fpath, None))
             if kind == "video":
-                v_qc = inspect_video_broll_segment(fpath, t_in, v_dur)
+                v_qc = inspect_video_broll_segment(fpath, t_in, v_dur, box_w=vis_bw, box_h=vis_bh)
                 v_qc["file"] = bn
                 v_qc["segment"] = [round(t_in, 2), round(t_in + v_dur, 2)]
+                v_qc["render_box"] = [round(vis_bw), round(vis_bh)]
+                v_qc["css_max_scale"] = round(max_sc, 3)
                 broll_qc.append(v_qc)
                 if v_qc["dark_consecutive"] >= 2 or v_qc["dark_ratio"] > 0.25:
                     hard_failures.append(
@@ -2897,6 +3238,20 @@ def audit_film_dir(
                 if v_qc["max_scdet_score"] >= 16.0:
                     hard_failures.append(
                         f"B-roll 镜头内未切分硬切穿帮：`{bn}` 在 {v_qc['scdet_times']}s 存在内部机位硬切(scdet={v_qc['max_scdet_score']} >= 16.0)"
+                    )
+                if v_qc.get("stability_tier") == "C_severe_jitter":
+                    hard_failures.append(
+                        f"B-roll 背景高频往复晃动/抖动穿帮：`{bn}` 选用区间 [{t_in:.2f}s..{t_in+v_dur:.2f}s] 折算舞台高频急动度 hf_jerk={v_qc['hf_jerk_px']}px(>2.40px) 或往复反向率={v_qc['reversals_per_sec']}/s(>2.50/s)，严禁使用手持剧烈晃动/天桥快放延时/颠簸船拍素材，请更换 Pixabay 竖屏三脚架/云台稳像素材或运行 `qc_video.py stabilize-broll`"
+                    )
+                elif v_qc.get("stability_tier") == "B_mild_shake":
+                    warnings.append(
+                        f"B-roll 存在轻微手持微晃：`{bn}` (hf_jerk={v_qc['hf_jerk_px']}px, 往复反向率={v_qc['reversals_per_sec']}/s)，建议运行 `qc_video.py stabilize-broll` 稳像或改用 L3/L6 横屏视窗构图"
+                    )
+                if abs(max_sc - 1.0) > 0.015 and (
+                    v_qc.get("mean_speed_px", 0.0) > 0.45 or v_qc.get("hf_jerk_px", 0.0) > 0.40
+                ):
+                    hard_failures.append(
+                        f"B-roll 双重运镜打架：`{bn}` 自身含原生运镜或微晃(均速={v_qc['mean_speed_px']}px/f, hf_jerk={v_qc['hf_jerk_px']}px) 却违规叠加 CSS 缩放动画(scale={max_sc:.2f})，放大背景抖动并引发视觉眩晕，仅锁死三脚架绝对静止镜头可叠加人工 scale 推镜"
                     )
         for i in range(len(dhash_map)):
             for j in range(i + 1, len(dhash_map)):
@@ -3742,6 +4097,20 @@ def main() -> int:
     p_bed.add_argument("--swell-db", type=float, default=4.5, help="Swell boost in dB during pauses/hook (default: 4.5)")
     p_bed.add_argument("--bgm-offset", type=float, help="Start offset into source BGM (seconds; auto-skips dead intro if omitted)")
 
+    p_stab = sub.add_parser(
+        "stabilize-broll",
+        help="Run 2-pass libvidstab optical stabilization on mild-shake B-roll and reject Tier C warped clips.",
+    )
+    p_stab.add_argument("--in", dest="input", required=True, help="Raw input B-roll MP4/WebM path")
+    p_stab.add_argument("--out", required=True, help="Output stabilized MP4 path")
+    p_stab.add_argument("--ss", type=float, default=0.0, help="Optional trim start seconds (default: 0)")
+    p_stab.add_argument("--dur", type=float, help="Optional trim duration seconds")
+    p_stab.add_argument("--smoothing", type=int, default=22, help="vidstab smoothing frames (default: 22)")
+    p_stab.add_argument("--tripod", action="store_true", help="Lock virtual tripod mode (zero pan/tilt)")
+    p_stab.add_argument("--box-w", type=float, default=1080.0, help="Target stage box width (default: 1080)")
+    p_stab.add_argument("--box-h", type=float, default=1920.0, help="Target stage box height (default: 1920)")
+    p_stab.add_argument("--keep-failed", action="store_true", help="Keep output file even if still Tier C jittery")
+
     p_render = sub.add_parser(
         "audit-render",
         help="Run V2 acoustic, EDL, B-roll, Boxless visual, optical LUT/cutout, subtitle, cover, and publish.json QC.",
@@ -3788,6 +4157,8 @@ def main() -> int:
         return cmd_normalize_sfx(args)
     if args.cmd == "build-bgm-bed":
         return cmd_build_bgm_bed(args)
+    if args.cmd == "stabilize-broll":
+        return cmd_stabilize_broll(args)
     if args.cmd == "audit-render":
         return cmd_audit_render(args)
     if args.cmd == "audit-matrix":

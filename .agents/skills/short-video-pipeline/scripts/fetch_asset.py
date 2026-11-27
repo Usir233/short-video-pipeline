@@ -4,7 +4,7 @@
 
 子命令（先 source env.sh）：
   1) news-page    抓官方新闻稿/博客正文事实 + 自动提取高清配图 + 可选网页干净截图
-  2) stock        免 Key 搜索/下载公开免版权素材（Wikimedia Commons / NASA / Internet Archive / Openverse）
+  2) stock        搜索/下载免版权高清素材（已配本地 Pixabay 时自动优先竖屏无延时实拍，兜底 Wikimedia / NASA / Archive / Openverse）
   3) video-search 用工作区 yt-dlp 搜索官方发布会 / 产品 Demo（YouTube 等）
   4) video-clip   用工作区 yt-dlp + ffmpeg 按起止秒精准截取官方视频短片段（≤6s 推荐）
   5) register     将筛选好的素材从 materials/ 放入 film/assets/（可选同步到 .local/openfilm-user/saved/）并登记 credits.json
@@ -332,7 +332,138 @@ const { chromium } = require(process.env.SVP_PW_MOD);
     return 0
 
 
-# -------------------- 2. stock (zero-key public APIs) --------------------
+# -------------------- 2. stock (Pixabay local key priority + zero-key public APIs) --------------------
+
+def _load_pixabay_key() -> str:
+    """Read Pixabay API key silently from env or local gitignored OpenFilm providers.json (never log or persist it)."""
+    env_k = os.environ.get("PIXABAY_API_KEY", "").strip()
+    if env_k:
+        return env_k
+    of_home = Path(os.environ.get("OPENFILM_HOME") or (svp_root() / ".local" / "openfilm"))
+    prov_file = of_home / "providers.json"
+    if prov_file.is_file():
+        try:
+            data = json.loads(prov_file.read_text(encoding="utf-8"))
+            return str(((data.get("keys") or {}).get("pixabay")) or "").strip()
+        except Exception:
+            return ""
+    return ""
+
+
+def search_pixabay(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
+    if kind == "audio":
+        return []
+    api_key = _load_pixabay_key()
+    if not api_key:
+        return []
+    per_page = min(100, max(50, limit * 12))
+    allow_timelapse = bool(re.search(r"timelapse|hyperlapse|time-lapse|time\s+lapse", query, flags=re.IGNORECASE))
+    timelapse_tag_re = re.compile(r"\b(?:timelapse|hyperlapse|time-lapse|time\s+lapse)\b", flags=re.IGNORECASE)
+
+    if kind == "video":
+        params = urllib.parse.urlencode({
+            "key": api_key,
+            "q": query,
+            "video_type": "film",
+            "safesearch": "true",
+            "per_page": per_page,
+        })
+        raw, _ = http_get(f"https://pixabay.com/api/videos/?{params}", timeout=15.0)
+        j = json.loads(raw.decode("utf-8", "replace"))
+        ranked: list[dict[str, Any]] = []
+        for it in (j.get("hits") or []):
+            tags = str(it.get("tags") or "")
+            if not allow_timelapse and timelapse_tag_re.search(tags):
+                continue
+            vids = it.get("videos") or {}
+            chosen_v = None
+            for tier in ("large", "medium", "small"):
+                cand = vids.get(tier) or {}
+                cw = int(cand.get("width") or 0)
+                ch = int(cand.get("height") or 0)
+                if cand.get("url") and max(cw, ch) <= 2560 and max(cw, ch) >= 1080:
+                    chosen_v = cand
+                    break
+            if not chosen_v:
+                for tier in ("medium", "large", "small"):
+                    cand = vids.get(tier) or {}
+                    if cand.get("url") and max(int(cand.get("width") or 0), int(cand.get("height") or 0)) >= 720:
+                        chosen_v = cand
+                        break
+            if not chosen_v:
+                continue
+            vw = int(chosen_v.get("width") or 0)
+            vh = int(chosen_v.get("height") or 0)
+            ranked.append({
+                "source": "pixabay",
+                "title": f"pixabay-{it.get('id', '')}-{slugify(tags, 32)}",
+                "url": chosen_v["url"],
+                "page_url": it.get("pageURL") or "",
+                "width": vw,
+                "height": vh,
+                "orientation": "portrait" if vh > vw else "landscape",
+                "duration_sec": it.get("duration") or 0,
+                "tags": tags,
+                "mime": "video/mp4",
+                "license": "Pixabay Content License (Free commercial use)",
+                "author": str(it.get("user") or "Pixabay")[:80],
+                "_pop": int(it.get("downloads") or 0) + int(it.get("likes") or 0) * 10,
+            })
+        # Prioritize native 9:16 portrait clips first, then >=1080p clean film clips
+        ranked.sort(
+            key=lambda x: (
+                1 if x["height"] > x["width"] else 0,
+                1 if min(x["width"], x["height"]) >= 1080 else 0,
+                x["_pop"],
+            ),
+            reverse=True,
+        )
+        out_hits: list[dict[str, Any]] = []
+        for item in ranked[:limit]:
+            item.pop("_pop", None)
+            out_hits.append(item)
+        return out_hits
+
+    params = urllib.parse.urlencode({
+        "key": api_key,
+        "q": query,
+        "image_type": "photo",
+        "safesearch": "true",
+        "per_page": per_page,
+    })
+    raw, _ = http_get(f"https://pixabay.com/api/?{params}", timeout=15.0)
+    j = json.loads(raw.decode("utf-8", "replace"))
+    img_ranked: list[dict[str, Any]] = []
+    for it in (j.get("hits") or []):
+        img_url = it.get("largeImageURL") or it.get("webformatURL")
+        if not img_url:
+            continue
+        iw = int(it.get("imageWidth") or 0)
+        ih = int(it.get("imageHeight") or 0)
+        tags = str(it.get("tags") or "")
+        img_ranked.append({
+            "source": "pixabay",
+            "title": f"pixabay-{it.get('id', '')}-{slugify(tags, 32)}",
+            "url": img_url,
+            "page_url": it.get("pageURL") or "",
+            "width": iw,
+            "height": ih,
+            "orientation": "portrait" if ih > iw else "landscape",
+            "mime": "image/jpeg",
+            "license": "Pixabay Content License (Free commercial use)",
+            "author": str(it.get("user") or "Pixabay")[:80],
+            "_pop": int(it.get("downloads") or 0) + int(it.get("likes") or 0) * 10,
+        })
+    img_ranked.sort(
+        key=lambda x: (1 if x["height"] > x["width"] else 0, x["_pop"]),
+        reverse=True,
+    )
+    out_imgs: list[dict[str, Any]] = []
+    for item in img_ranked[:limit]:
+        item.pop("_pop", None)
+        out_imgs.append(item)
+    return out_imgs
+
 
 def search_wikimedia(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
     ftype = "video" if kind == "video" else ("audio" if kind == "audio" else "bitmap")
@@ -478,13 +609,21 @@ def search_openverse(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
 
 
 def cmd_stock(args: argparse.Namespace) -> int:
-    sources = [args.source] if args.source != "auto" else (
-        ["wikimedia", "nasa", "archive"] if args.kind == "video" else ["wikimedia", "openverse", "nasa"]
-    )
+    has_pixabay = bool(_load_pixabay_key())
+    if args.source != "auto":
+        sources = [args.source]
+    elif args.kind == "video":
+        sources = (["pixabay"] if has_pixabay else []) + ["wikimedia", "nasa", "archive"]
+    elif args.kind == "image":
+        sources = (["pixabay"] if has_pixabay else []) + ["wikimedia", "openverse", "nasa"]
+    else:
+        sources = ["wikimedia", "openverse", "nasa"]
     hits: list[dict[str, Any]] = []
     for src in sources:
         try:
-            if src == "wikimedia":
+            if src == "pixabay":
+                hits.extend(search_pixabay(args.query, args.kind, args.limit))
+            elif src == "wikimedia":
                 hits.extend(search_wikimedia(args.query, args.kind, args.limit))
             elif src == "nasa":
                 hits.extend(search_nasa(args.query, args.kind, args.limit))
@@ -493,7 +632,8 @@ def cmd_stock(args: argparse.Namespace) -> int:
             elif src == "openverse":
                 hits.extend(search_openverse(args.query, args.kind, args.limit))
         except Exception as exc:
-            print(f"[warn] {src} 查询失败：{exc}", file=sys.stderr)
+            safe_err = re.sub(r"key=[^&\s]+", "key=***", str(exc))
+            print(f"[warn] {src} 查询失败：{safe_err}", file=sys.stderr)
         if args.source == "auto" and len(hits) >= args.limit:
             break
 
@@ -686,10 +826,10 @@ def main() -> int:
     p_news.add_argument("--max-images", type=int, default=6)
     p_news.set_defaults(func=cmd_news_page)
 
-    p_stock = sub.add_parser("stock", help="免 Key 搜索/下载公开免版权素材（Wikimedia/NASA/Archive/Openverse）")
+    p_stock = sub.add_parser("stock", help="搜索/下载免版权高清素材（本地已配 Pixabay 时优先竖屏稳像实拍，兜底 Wikimedia/NASA/Archive/Openverse）")
     p_stock.add_argument("--query", required=True, help="建议用英文视觉关键词")
     p_stock.add_argument("--kind", choices=["image", "video", "audio"], default="image")
-    p_stock.add_argument("--source", choices=["auto", "wikimedia", "nasa", "archive", "openverse"], default="auto")
+    p_stock.add_argument("--source", choices=["auto", "pixabay", "wikimedia", "nasa", "archive", "openverse"], default="auto")
     p_stock.add_argument("--limit", type=int, default=5)
     p_stock.add_argument("--download", type=int, default=0, help="下载前 N 条到 --out（默认 0 仅列出候选）")
     p_stock.add_argument("--out", default="", help="原件目录（如 runs/<目录>/materials）")

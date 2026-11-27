@@ -46,6 +46,7 @@ OpenFilm 按 `<section>` 出现顺序从上往下叠放图层（第一个 `<sect
     --of-beauty-texture: 0.72;
     --of-beauty-protect-glasses: 1;
   }
+  /* 注意：自身含运镜或微晃的动态 B-roll 严禁再叠加 .cam-c1-push / scale(...) 人工缩放动画！ */
   .broll-graded {
     object-fit: cover;
     --of-lut: url(looks/master-editorial.cube);
@@ -229,5 +230,5 @@ const easeInOutSine = (x) => -(Math.cos(Math.PI * clamp(x)) - 1) / 2;
 执行 `qc_video.py audit-render` 与 `audit-matrix` 时，脚本自动对本规范执行以下硬拦截（`hard_failures`，Exit Code `2`）：
 1. **反 Dashboard 套娃与伪进度条**：单镜显式描边矩形 `> 3`、宽 `≥ 700px` 描边大外框套子框、或无真实数值的水平进度条 `<rect>`；
 2. **反预摆空壳框与反字幕复读**：`main-stage` 首 `2.2s` 空壳框等待（`min_trigger > 1.0s` 且首拍有效字 `<6`），或前景文字与同期字幕重合率 `≥ 60%`；
-3. **光学调色与抠像防穿帮**：实拍口播 `<video>` 未挂 `--of-lut`；`--of-cutout: 1` 宽度 `< 1060px`（切双肩）或底层缺失同源模糊 `<video>`（纯色 CSS 底裸贴炸绿毛边）；`speaker-pip` `v2 < 72%` 切嘴下巴；
-4. **字幕与声学硬门禁**：任意槽位使用封闭胶囊底框 `.pill`、主字号 `< 40px`、单屏净长 `> 15` 字、`<em>` 含标点；成片 `LRA < 3.6 LU`（`v1 < 3.3 LU`）砖墙拍扁、BGM 有效差值越界或原生 `LRA > 11 LU` 未稳压、长于 `35s` 成片无 `Silence Drop`/侧链配乐床、幽灵弱音效 `< -35 LUFS` 及槽位黑名单音色。
+3. **光学调色、抠像防穿帮与 B-roll 防抖/运镜解耦**：实拍口播 `<video>` 未挂 `--of-lut`；`--of-cutout: 1` 宽度 `< 1040px`（切双肩）或底层缺失同源模糊 `<video>`（纯色 CSS 底裸贴炸绿毛边）；`speaker-pip` `v2 < 72%` 切嘴下巴；动态 B-roll 舞台折算高频急动度 `hf_jerk > 2.40px` 或往复反向率 `> 2.50/s`（`Tier C` 背景来回晃动穿帮，轻微微晃须先经 `qc_video.py stabilize-broll` 稳像），或非静止 B-roll 违规叠加 CSS `scale` 缩放引发双重运镜打架；
+4. **字幕与声学硬门禁**：任意槽位使用封闭胶囊底框 `.pill`、主字号 `< 40px`、单屏净长 `> 15` 字、`<em>` 含标点；成片 `LRA < 3.6 LU`（`v1 < 3.3 LU`）砖墙拍扁、BGM 有效差值越界或原生 `LRA > 11.5 LU` 未稳压、长于 `32s` 成片无 `Silence Drop`/侧链配乐床、幽灵弱音效 `< -36 LUFS` 及槽位黑名单音色。
