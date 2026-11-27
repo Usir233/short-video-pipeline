@@ -135,13 +135,13 @@ OpenFilm 按 `<section>` 出现顺序从上往下叠放图层（第一个 `<sect
 
 ### 第三类：实拍增强与 AI 人像光学合成特效（Portrait & Footage VFX · `PF1–PF7`）
 
-1. **`PF1` 五套工作区离线 `.cube` 3D LUT 色彩分级（实拍必挂，入口 E 五槽位一一正交绑定）**：
+1. **`PF1` 五套工作区离线 `.cube` 3D LUT 色彩分级（实拍必挂，入口 E 五号组一一正交绑定）**：
    建项时从 `.agents/skills/short-video-pipeline/assets/luts/` 复制对应 `.cube` 至项目 `film/looks/`，所有口播与 B-roll `<video>` 必须挂载 `--of-lut: url(looks/<name>.cube)`（`qc_video.py` 硬拦截零调色裸奔实拍与跨槽重复 LUT）：
-   - `master-editorial.cube`（`S01 / S06 / S07` · `00-master` 默认）：压降室内绿植/黄木墙杂色饱和度 `-34%`，暗部微偏冷青墨，精准保护亚洲肤色自然暖感；
-   - `v1-crisp-contrast.cube`（`S02` · `01-v1` 默认）：高反差 S 曲线（`+16%`），冷峻青蓝暗部配锐利暖高光；
-   - `v2-warm-paper.cube`（`S03 / S10` · `02-v2` 默认）：柔和提亮死黑至暖炭灰（`0.022` 暗部托底），消除室内绿黄偏色，与 `#F2EFE9` 暖纸画布无缝衔接；
-   - `v3-obsidian-film.cube`（`S04 / S07` · `03-v3` 默认）：环境降饱和 `-26%`，深沉黑曜石暗部 + 高光暖象牙胶片滚降；
-   - `tech-keynote.cube`（`S08 / S05 / S09` · **`04-v4` 专属槽位绑定**）：清冽影棚中性高净度白平衡，净除室内暖黄浊气，精准凸显双域交锋分屏与红笔划除证伪反差。
+   - `master-editorial.cube`（`S01 / S06 / S07` · `00-master`［`G0 跨境AI十亿增长局`］绑定）：压降室内绿植/黄木墙杂色饱和度 `-34%`，暗部微偏冷青墨，精准保护亚洲肤色自然暖感；
+   - `v1-crisp-contrast.cube`（`S02` · `01-v1`［`G1 时奕聊AI经营`］绑定）：高反差 S 曲线（`+16%`），冷峻青蓝暗部配锐利暖高光；
+   - `v2-warm-paper.cube`（`S03 / S10` · `02-v2`［`G2 辰奕AI经营实战`］绑定）：柔和提亮死黑至暖炭灰（`0.022` 暗部托底），消除室内绿黄偏色，与 `#F2EFE9` 暖纸画布无缝衔接；
+   - `tech-keynote.cube`（`S08 / S05 / S09` · **`03-v3`［`G3 老郑AI经营实战`］绑定**）：清冽影棚中性高净度白平衡，净除室内暖黄浊气，精准凸显双域交锋分屏与红笔划除证伪反差；
+   - `v3-obsidian-film.cube`（`S04 / S07` · **`04-v4`［`G4 老郑AI经营论`］绑定**）：环境降饱和 `-26%`，深沉黑曜石暗部 + 高光暖象牙胶片滚降。
 2. **`PF2` 商业人像自然精修（OpenFilm 原生语义美颜）**：
    统一推荐克制配方：`--of-beauty-even: 0.22; --of-beauty-eye-bright: 0.24; --of-beauty-dark-circles: 0.18; --of-beauty-texture: 0.72; --of-beauty-protect-glasses: 1`（提亮眼神光、匀净肤色、保留 `72%` 真实毛孔质感且绝不拉歪眼镜框；严禁开启 `slim / jaw / eyes > 0.1` 造成网红脸形变）。
 3. **`PF3` 同源模糊底光学浅景深分离（根治抠像绿毛边死命令）**：
@@ -192,14 +192,14 @@ OpenFilm 按 `<section>` 出现顺序从上往下叠放图层（第一个 `<sect
 3. **无延迟匹配器**：统一采用 `const end = i + 1 < CUES.length ? Math.min(c[1] + 0.12, CUES[i+1][0] - 0.001) : c[1] + 0.12;` 防止前句尾延吞掉下句入场；
 4. **克制高亮**：全片带 `<em>` 高亮的 `cue` 占比 **`15%–38%`**，单个 `<em>` 词长 **`≤ 5` 字且严禁包含任何标点符号**。
 
-| 预设代号 | 对应风格 | `.wrap top`（五槽 `46px` 等距阶梯） | 对齐与标志性结构 | 正文字体/字号/字距/颜色 | 描边/底影与 `<em>` 重点词特效 |
+| 预设代号 | 对应风格与号组 | `.wrap top`（五槽 `46px` 等距阶梯） | 对齐与标志性结构 | 正文字体/字号/字距/颜色 | 描边/底影与 `<em>` 重点词特效 |
 |---|---|---:|---|---|---|
-| **`SUB1`** | `S01 / S07`<br>（`00-master` 默认） | `1412px` | `left: 72px; right: 96px; text-align: left` + 左侧 `4px` 铜青竖向标尺线 | `Noto Sans SC` 700, `46px`, `-0.5px`, `#FFF8E6` | 多层光学柔影 `0 3px 14px rgba(0,0,0,0.92)`；`<em>` 切 **`Noto Serif SC` 900 `50px` 暖金 `#FFC21A`** |
-| **`SUB2`** | `S02`<br>（`01-v1` 默认） | `1320px` | `text-align: center` | `Noto Sans SC` 900, `52px`, `-1.0px`, `#FFFFFF` | `paint-order: stroke fill; -webkit-text-stroke: 9px #050811` 厚黑边；`<em>` `60px` `#FFE600`/`#FF5A26` 弹簧上跳 `-4px` |
-| **`SUB3`** | `S03`<br>（`02-v2` 默认） | `1458px` | `text-align: center` | `Noto Sans SC` 900, `46px`, `-0.3px`, 纸底 `#111C24`（实拍段切 `#FFF8E6`） | 无描边油墨印刷质感；`<em>` 底部铺 `42%` 高陶橙/翡翠青动态横向刷出荧光马克笔带 |
-| **`SUB4`** | `S04`<br>（`03-v3` 默认） | `1504px` | `text-align: center` | **全句 `Noto Serif SC` 700**, `42px`, **`+2.5px` 宽字距**, `#F2E5C6` | 电影院细柔暗影 `0 2px 16px rgba(0,0,0,0.95)`；`≤25%` `<em>` 同字号微染陶金 `#E29578` 柔焦淡入 |
-| **`SUB5`** | `S08 / S05 / S06 / S09`<br>（**`04-v4` 默认**） | `1366px` | `text-align: center` | `Noto Sans SC` 700 + `Bahnschrift`, `46px`, `0px`, `#F4F7FA` | 干净暗影 `0 4px 18px rgba(0,0,0,0.88)`；`<em>` 电光青 `#38BDF8` 底配 `2px` 极细刻度下划线 |
-| **`SUB6`** | `S10` 实操笔记<br>（`04-v4` 切 `S10` 时用） | `1366px` | `text-align: center` | `Noto Sans SC` 700, `45px`, `-0.4px`, `#18222B` / `#FFF8E6` | 清晰柔和底影；`<em>` 翡翠青动作词加粗强调 |
+| **`SUB1`** | `S01 / S07`<br>（`00-master` · `G0`） | `1412px` | `left: 72px; right: 96px; text-align: left` + 左侧 `4px` 铜青竖向标尺线 | `Noto Sans SC` 700, `46px`, `-0.5px`, `#FFF8E6` | 多层光学柔影 `0 3px 14px rgba(0,0,0,0.92)`；`<em>` 切 **`Noto Serif SC` 900 `50px` 暖金 `#FFC21A`** |
+| **`SUB2`** | `S02`<br>（`01-v1` · `G1`） | `1320px` | `text-align: center` | `Noto Sans SC` 900, `52px`, `-1.0px`, `#FFFFFF` | `paint-order: stroke fill; -webkit-text-stroke: 9px #050811` 厚黑边；`<em>` `60px` `#FFE600`/`#FF5A26` 弹簧上跳 `-4px` |
+| **`SUB3`** | `S03`<br>（`02-v2` · `G2`） | `1458px` | `text-align: center` | `Noto Sans SC` 900, `46px`, `-0.3px`, 纸底 `#111C24`（实拍段切 `#FFF8E6`） | 无描边油墨印刷质感；`<em>` 底部铺 `42%` 高陶橙/翡翠青动态横向刷出荧光马克笔带 |
+| **`SUB5`** | `S08 / S05 / S06 / S09`<br>（**`03-v3` · `G3` 默认**） | `1366px` | `text-align: center` | `Noto Sans SC` 700 + `Bahnschrift`, `46px`, `0px`, `#F4F7FA` | 干净暗影 `0 4px 18px rgba(0,0,0,0.88)`；`<em>` 电光青 `#38BDF8` 底配 `2px` 极细刻度下划线 |
+| **`SUB4`** | `S04`<br>（**`04-v4` · `G4` 默认**） | `1504px` | `text-align: center` | **全句 `Noto Serif SC` 700**, `42px`, **`+2.5px` 宽字距**, `#F2E5C6` | 电影院细柔暗影 `0 2px 16px rgba(0,0,0,0.95)`；`≤25%` `<em>` 同字号微染陶金 `#E29578` 柔焦淡入 |
+| **`SUB6`** | `S10` 实操笔记<br>（`02-v2` 切 `S10` 时用） | `1458px` | `text-align: center` | `Noto Sans SC` 700, `45px`, `-0.4px`, `#18222B` / `#FFF8E6` | 清晰柔和底影；`<em>` 翡翠青动作词加粗强调 |
 
 ---
 
@@ -215,7 +215,7 @@ const easeInOutSine = (x) => -(Math.cos(Math.PI * clamp(x)) - 1) / 2;
 ```
 
 #### 2. 两阶段确定性音频工程与声画配对铁律
-1. **前级人声母带化（必跑 `qc_video.py prepare-voice`）**：`85Hz` 高通 + `260Hz` 去胸闷 + `3.6kHz/9.5kHz` 磁性空气激励 + `6.8kHz` 抑齿音 + `3:1` 柔顺压缩与 `-1.5dB` 限幅，确保成片 `LRA ≥ 3.6 LU`（告别干声撞砖墙限幅）。
+1. **前级合规扫描、敏感词「1000Hz 哔声」屏蔽与人声母带化（必跑 `scan-compliance` + `prepare-voice --bleeps`）**：先对 ASR/SRT 执行 `qc_video.py scan-compliance` 输出 `compliance-bleeps.json`（涵盖国内跨平台词如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信→某信`、`快手→某手`、`淘宝/拼多多→某宝/某多多` 及广告法极限词、私域导流词、财税灰产词、`死/杀/诈骗/破产` 等风控词；正常保留亚马逊/独立站/领星/AI 业务词）；再运行 `qc_video.py prepare-voice --bleeps <compliance-bleeps.json>` 一体完成 `85Hz` 高通 + `260Hz` 去胸闷 + `3.6kHz/9.5kHz` 空气激励 + `3:1` 柔顺压缩 + **对敏感词精准静音并混入 `-18 dBFS` 标准 `1000Hz` 广播级「哔」声**，同时在 `subtitles.html` 与 `scenes/*.html` 同步替换为 `某音` 等脱敏词（由 `qc_video.py audit-render` 硬阻断未屏蔽漏词）。
 2. **SFX 入库归一化（必跑 `qc_video.py normalize-sfx`）**：淘汰 `< -50 LUFS` 静音坏件，合格音效峰值统一归至 `-3.0 dBTP`。
 3. **自动侧链呼吸配乐床（必跑 `qc_video.py build-bgm-bed`）**：自动稳压 `LRA > 9 LU` 曲目、注入 Cold Open/Outro 推升、`Silence Drop` 金句真空窗与 `sidechaincompress` 人声开口自动退让 `4 dB`。
 4. **「无物理动量不配音」与槽位音色黑名单**：

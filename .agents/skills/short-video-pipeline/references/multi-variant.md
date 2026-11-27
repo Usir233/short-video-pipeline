@@ -14,9 +14,9 @@
 |---|---|---|
 | **原始输入** | `raw/` | 用户输入的「原片 + 配套素材」，分为「已处理」与「未处理」两种初始状态。原片只读不动（工作区外源文件只读复制进来，绝不移动或删除用户原文件）。 |
 | **粗剪与预处理** | `rough-cut/` | 仅当输入为「未处理」时执行：先按视频中的**话题分段切割**，同步**去除口气词/废话/冗余停顿**；完成后强制停下汇报用户（**闸门 1**），按用户指示确认通过或追加预处理（如指定时段/区域**打马赛克**、删改/合并段、裁切/降噪）。 |
-| **母素材（Master Assets）** | `master-assets/` | 「已处理输入」直通，或经粗剪与用户确认预处理完成后的**最终干净原片切片（含按需人声分轨）+ 配套素材包**。它是下游 1 母片 + 4 子片的共同干净上游源，从源头避免母片烧录特效/花字/配乐污染下游子片换风格。 |
-| **母片（Master）** | `master/` | 基于「母素材」+ Agent 按需补充素材，按工作区既有规范制作出的**完整精剪加特效成片**，自带**母片专属的目标平台封面 + 目标平台文案**。 |
-| **4 条延伸子片（Variants）** | `variants/v1..v4/` | 基于「母素材」与当期母片及工作区既有规范，向外强制固定延伸出的 **4 条风格各不相同的精剪特效成片（`v1–v4`）**；每条子片根据自身实际情况**独立补充素材**，并各自拥有**目标平台封面 + 目标平台文案**。 |
+| **母素材（Master Assets）** | `master-assets/` | 「已处理输入」直通，或经粗剪与用户确认预处理完成后的**最终干净原片切片（含合规消音脱敏人声母带）+ 配套素材包**。它是下游 1 母片 + 4 子片的共同干净上游源，从源头统一完成平台敏感词「哔」声屏蔽与脱敏，并避免母片烧录特效/花字/配乐污染下游子片换风格。 |
+| **母片（Master · 对应 `G0` 号组）** | `master/` | 对位 **`G0` · `跨境AI十亿增长局`**（宏观战略大盘与十亿增长格局）：基于「母素材」+ Agent 按需补充素材制作出的**完整竖版精剪加特效成片（统一固定 `1080×1920`，不制作横版）**，自带**人物头顶水平居中标题 + 印有 `跨境AI十亿增长局` IP 名的目标平台竖版封面 + 目标平台文案**。 |
+| **4 条延伸子片（Variants · 对应 `G1–G4` 号组）** | `variants/v1..v4/` | 基于「母素材」与当期母片，按 **`01-v1 ↔ G1 时奕聊AI经营`、`02-v2 ↔ G2 辰奕AI经营实战`、`03-v3 ↔ G3 老郑AI经营实战`、`04-v4 ↔ G4 老郑AI经营论`** 四大账号 IP 人设与内容方向强制固定延伸出的 **4 条风格各异精剪成片**；每条子片**独立补充素材**，并各自拥有**印本槽精确账号 IP 名的目标平台封面 + 目标平台文案**。 |
 
 **单次运行标准总产出（强制固定规模，不保留 3 子片分支）**：
 - **默认全三平台（`M = 3`）**：**5 条精剪成片（1 母片 + 4 延伸子片）+ 15 张定制封面（5 × 3）+ 15 套过审三平台文案（5 × 3）+ 规范化的 `delivery/` 统一交付包**；
@@ -59,14 +59,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 │   │   ├── 00-master-<话题短名>.mp4                 母片完整特效成片（防传混前缀 00-master）
 │   │   └── check/                                  逐镜帧图、ffprobe.json、check.json
 │   ├── covers/
-│   │   ├── 00-master-douyin.png                    1080 × 1920
-│   │   ├── 00-master-shipinhao.png                 1080 × 1920
-│   │   ├── 00-master-xhs.png                       1080 × 1440
+│   │   ├── 00-master-douyin.png                    1080 × 1920（竖版 · 头顶居中标题）
+│   │   ├── 00-master-xhs.png                       1242 × 1660（竖版 · 头顶居中标题）
+│   │   ├── 00-master-shipinhao.png                 1080 × 1440（竖版 · 头顶居中标题）
 │   │   └── cover-spec.json
 │   └── publish/
 │       └── publish.json                            母片三平台四项文案、三层标签、发布组合、封面路径与 audit
-├── variants/                                       【4 条延伸子片】目录物理隔离，天然支持 4 子代理并行
-│   ├── v1-<风格短名>/
+├── variants/                                       【4 条延伸子片 · 对位 G1-G4】目录物理隔离，天然支持 4 子代理并行
+│   ├── v1-<风格短名>/                              对位 G1 · 时奕聊AI经营（默认 S02 / C2）
 │   │   ├── script/storyboard.json
 │   │   ├── materials/                              子片 1 独立补充素材原件；封面过程稿放 materials/covers/
 │   │   ├── film/                                   子片 1 独立 OpenFilm 工程 + assets/ + credits.json
@@ -74,14 +74,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 │   │   │   ├── 01-v1-<风格短名>.mp4                 防传混前缀 01-v1
 │   │   │   └── check/
 │   │   ├── covers/
-│   │   │   ├── 01-v1-douyin.png                    1080 × 1920
-│   │   │   ├── 01-v1-shipinhao.png                 1080 × 1920
-│   │   │   ├── 01-v1-xhs.png                       1080 × 1440
+│   │   │   ├── 01-v1-douyin.png                    1080 × 1920（竖版 · 头顶居中标题）
+│   │   │   ├── 01-v1-xhs.png                       1242 × 1660（竖版 · 头顶居中标题）
+│   │   │   ├── 01-v1-shipinhao.png                 1080 × 1440（竖版 · 头顶居中标题）
 │   │   │   └── cover-spec.json
 │   │   └── publish/publish.json
-│   ├── v2-<风格短名>/                               编号前缀 02-v2-*（内部结构与 v1 完全同构）
-│   ├── v3-<风格短名>/                               编号前缀 03-v3-*（内部结构与 v1 完全同构）
-│   └── v4-<风格短名>/                               编号前缀 04-v4-*（内部结构与 v1 完全同构）
+│   ├── v2-<风格短名>/                               编号前缀 02-v2-* · 对位 G2 · 辰奕AI经营实战（默认 S03或S10 / C3）
+│   ├── v3-<风格短名>/                               编号前缀 03-v3-* · 对位 G3 · 老郑AI经营实战（默认 S08或S07 / C5）
+│   └── v4-<风格短名>/                               编号前缀 04-v4-* · 对位 G4 · 老郑AI经营论（默认 S04 / C4）
 ├── delivery/                                       【统一交付包】面向人工上传的一站式出口
 │   ├── INDEX.md                                    一页式总交付表（母素材摘要 + 5 成片/15 封面路径 + 审核状态）
 │   ├── 00-master/                                  00-master-<话题短名>.mp4 + 3 张封面 PNG + copy.md
@@ -134,10 +134,11 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - **工作区外原片**：若用户提供了工作区外的本机文件路径，**只读复制**进 `raw/`（**严禁 `mv` 移动或删除用户本机源文件**）；若是下载链接，则用工作区工具下载进 `raw/`；
    - 用户附带的配套素材只读复制或登记进 `raw/supplied/`；
    - 用 `ffprobe` 检查原片分辨率、帧率、时长、编码与音轨状态，写入 `raw/input.json`。
-4. **原片 BGM / 底噪体检、人声分轨与广播级人声前置母带（防叠音与砖墙削波）**：
+4. **原片 BGM / 底噪体检、平台政策合规「哔」声屏蔽与广播级人声前置母带（防违规限流、叠音与削波）**：
    - 无论输入「已处理」还是「未处理」，均检查原片音轨是否自带背景音乐（BGM）或明显环境底噪（已处理口播片常混有原 BGM）；
    - 执行 `"$SVP_REA_VIDEO"` 拆解至 `raw/rea-out/`，提取完整口播逐字稿与精确时间戳（若原片自带 BGM 同步保留干净人声轨 `stems/vocals.wav`）；
-   - **广播级人声前置润色必做（`prepare-voice`）**：确立母素材时，对每个确认切片（或 `*-vocals.wav`）运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a`，产出**与源片等长零时间偏移**的压缩润色人声母带，记入 `master-assets/manifest.json` 的 `vocals_treated_track`（若原片带 BGM 同时记 `has_original_bgm: true`）。下游母片与 4 条子片的 `<section id="voice-track">` 一律引用该 `*-voice-treated.m4a`（画面 `<video>` 设 `volume="0"`），彻底杜绝双 BGM 叠音与渲染时 `-14 LUFS` 砖墙削波！
+   - **平台政策合规敏感词全量扫描与「1000Hz 哔声 + 某X 字幕」脱敏（必做）**：确立母素材时，先对校准后逐字稿运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" scan-compliance --transcript <逐字稿.json或.srt> --out master-assets/clips/<切片名>-compliance-bleeps.json`，自动筛出 5 类国内三平台风控词（① 国内跨平台名如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信/公众号→某信/某公号`、`快手→某手`、`淘宝/拼多多/京东→某宝/某多多/某东` 等，正常保留亚马逊/独立站/领星/GPT/AI 等业务词；② 站外私域导流词；③ 广告法极限/保本暴利承诺词；④ 逃税/刷单/假货等灰黑产词；⑤ 诈骗/传销/死路/破产跑路等高危风控词）；同时核查原片及配套画面，凡出现友商平台水印/Logo/二维码须同步模糊遮挡或构图裁除；
+   - **广播级人声前置润色与精准哔声混音必做（`prepare-voice --bleeps`）**：对每个确认切片（或 `*-vocals.wav`）运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a --bleeps master-assets/clips/<切片名>-compliance-bleeps.json`，将命中的违规原声窗口精准静音并混入 `-18.0 dBFS` 标准 `1000Hz` 广播正弦波「哔」声（前后 `15ms` 柔化淡入淡出，**与源片等长零时间偏移**），记入 `master-assets/manifest.json` 的 `vocals_treated_track` 与 `compliance_bleeps`。下游 `00-master` 与 `01-v1..04-v4` 的 `<section id="voice-track">` 一律引用该 `*-voice-treated.m4a`（画面 `<video>` 设 `volume="0"`），且 5 片全部 `subtitles.html`、`scenes/*.html` 花字、定制封面与 `publish.json` 文案一律同步采用脱敏词（如 `某音`），最终在 `delivery/INDEX.md` 附敏感词处理明细！
 5. **判定「已处理 / 未处理」（注意：跳过粗剪闸门 ≠ 跳过成片内 EDL 精剪与黄金冷开！）**：
    - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1 人工闸门：若源片 `>1440p` 或关键帧间隔 `>0.5s`，用显卡一次性转出 `1440p + -g 8` 快解母片放入 `master-assets/clips/`，否则按零重复拷贝原则归档原片切片、生成 `*-voice-treated.m4a` 并写 `manifest.json`。**关键红线：`master-assets/clips/` 保持完整不剪碎是为了统一时间码基准，但下游 `00-master` 与 `v1..v4` 各自制作时，仍必须在各自 `storyboard.json` 中用 `time_slices` 切净片头采访者搭话、推眼镜冷场与口头禅，并设计 `H1–H6` 黄金 3 秒冷开，严禁把前 7 秒冷场原封不动端进成片！**；
    - 用户明确说了「未处理 / 原片 / 先粗剪」，或输入位于工作区 `素材投递区/未处理原片/` 下且用户未声明已处理 → `gates.input_state_confirmed = true`，进入步骤 E1；
@@ -181,38 +182,38 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 写好 `film.html` 人声轨（引用 `*-voice-treated.m4a`）后，渲染前先跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" build-bgm-bed --film-dir . --bgm assets/<bgm> --out assets/bgm-bed.m4a --drops "<t1:t2>"`；
    - 渲染命令：`OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers 6 --out ../output/00-master-<话题短名>.mp4`；
    - 逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/00-master-<话题短名>.mp4 --film-dir . --out-dir ../output/check`，**亲自打开 `safezone-grid.png`、`safezone-tail.png`、`safezone-cuts.png`、`safezone-broll.png`、`safezone-pip.png`（如有）及 `safezone-cutouts.png`（如有）目检**，零 `hard_failures` 后记录写入 `master/output/check/`。
-4. **母片目标平台诚实文案 + 双轨封面 + 单条审核**：
-   - 按 [copywriting.md](copywriting.md) 依 `content_archetype` 诚实钩子契约写出母片三平台四项文案（禁伪造不存在的清单/破局方案，禁生造歧义缩略词），落盘 `master/publish/publish.json`；
-   - 若 `covers_enabled` 为 `true`：按 [cover-design.md](cover-design.md) 出图（「意图电商」系列走 Track A；其他主题走 **Track B `C1` 深墨左切光杂志人物拓扑**：先生成 20–30 帧 `materials/covers/contact-sheet.jpg` 五维选帧，主标题 `≥104px`/`≥100px`，零小胶囊标签堆砌），落盘 `master/covers/00-master-<平台>.png` 与 `cover-spec.json`；
+4. **母片（`G0 · 跨境AI十亿增长局`）目标平台诚实文案 + 双轨封面 + 单条审核**：
+   - 按 [copywriting.md](copywriting.md) 对齐 **`G0` · `跨境AI十亿增长局`** 战略大盘定位，依 `content_archetype` 诚实钩子契约写出母片三平台四项文案（禁伪造不存在的清单/破局方案，禁生造歧义缩略词，禁残留未脱敏敏感词），落盘 `master/publish/publish.json`（含 `"account_group": "G0"`、`"account_ip_name": "跨境AI十亿增长局"`）；
+   - 若 `covers_enabled` 为 `true`：按 [cover-design.md](cover-design.md) 出图（「意图电商」系列走 Track A 保持无账号名原版式；其他主题走 **Track B `C1` 深墨铜青人物画报**，**顶部居中刊头微标必须印精确 IP 名 `跨境AI十亿增长局`，且两行主标题统一置于人物头顶上方水平居中**，严禁标题沉底、压额头或串用其它号组名！先生成 20–30 帧 `materials/covers/contact-sheet.jpg` 五维选帧，严格输出竖版尺寸：抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`，零小胶囊标签堆砌），落盘 `master/covers/00-master-<平台>.png` 与 `cover-spec.json`；
    - 按 [publish-audit.md](publish-audit.md) 完成母片单条全目标平台审核（含 `--publish-json` 复跑 `audit-render`）并写回 `audit`。
 
-### 步骤 E3：基于当期母片与既有规范 → 延伸规划 4 条子片（+ 闸门 2）
+### 步骤 E3：基于当期母片与 `G1–G4` 账号 IP 定位 → 延伸规划 4 条子片（+ 闸门 2）
 
-1. **三档自适应内容切分策略与首尾双重护栏（开篇独立性 + 结尾闭环）**：
-   - **超长深访（母片 `> 120` 秒，且具备 `≥ 4` 个独立论点）**：4 条子片优先从「母素材 + 母片主线」中拆出 **4 个互不重复的核心看点/独立金句切片**（每条 `25–60` 秒），再各自做正交风格包装；
-   - **中长口播（母片 `75–120` 秒，通常含 `2–3` 个自然论点）**：采用 **「局部独立切片 + `v4` 跨段抽取旧误区 vs 真相定论重组」混合制**（例如 `v1/v2/v3` 各聚焦一段局部犀利看点，`v4` 横跨首尾抽取“多数人以为的旧共识靶子 vs 真实经营真相定论”做双视角交锋精粹，**严禁为硬凑 4 段将单一完整论点拦腰劈成残缺半句！**）；
-   - **短精华片（母片 `≤ 75` 秒）**：4 条子片围绕同一核心主题，从 **4 种完全正交的 `H1–H6` 开头钩子、叙事视角、节奏结构与视觉包装** 重构 4 条高度区分的成片；
-   - 用户启动时如显式指定「拆四条」或「同内容四风格」，则优先遵照切分方式指令（但子片总数始终强制固定为 4 条）；
+1. **三档自适应内容切分策略、五号组选题方向对齐与首尾双重护栏**：
+   - **超长深访（母片 `> 120` 秒，且具备 `≥ 4` 个独立论点）**：4 条子片按各自绑定的 **`G1–G4` 账号 IP 方向** 从「母素材 + 母片主线」中对位拆出 **4 个互不重复的核心看点切片**（每条 `25–60` 秒，`G1` 取犀利痛点对谈、`G2` 取方法模型算账、`G3` 取操盘破误区复盘、`G4` 取底层经营规律洞察），再各自做正交风格包装；
+   - **中长口播（母片 `75–120` 秒，通常含 `2–3` 个自然论点）**：采用 **「按账号人设拆解局部看点 + 跨段重组」混合制**（例如 `v1 [G1]` 切最锋利痛点快问快切，`v2 [G2]` 切方法推演或算账拆解，`v3 [G3]` 跨首尾抽取“多数人以为的旧共识靶子 vs 老郑一线实战真判断”做双视角交锋，`v4 [G4]` 提炼最具穿透力的周期规律与经营论哲思，**严禁为硬凑 4 段将单一完整论点拦腰劈成残缺半句！**）；
+   - **短精华片（母片 `≤ 75` 秒）**：4 条子片围绕同一核心主题，严格站在 **`G1–G4` 四个账号不同人设视角**，以 **4 种完全正交的 `H1–H6` 开头钩子、叙事切角、节奏结构与视觉包装** 重构 4 条高度区分的成片；
+   - 用户启动时如显式指定「拆四条」或「同内容四风格」，则优先遵照切分方式指令（但子片总数始终强制固定为 4 条，且 `00–04` 与 `G0–G4` 的账号 IP 对应关系不变）；
    - **开篇独立性护栏（严禁残句冷开）**：拆出的每条子片首句前 `0.8s` 内**严禁残留依赖前文的废语或悬空指代**（如「像我刚刚讲的」「反而是」「所以说」「那这个」）；若原段首句缺独立钩子，须精确后移起点裁净废语，或前置 `2–3s` 结论金句冷开，并在 `master-plan.json` 写明 `opening_hook`；
-   - **切点语义与声学闭环硬规（严禁无结尾半句截断或切入下句起音）**：规划每条子片（尤其是倒叙或分段切出的切片）的 `time_slices` 尾点时，**必须对照 `aligned_transcript` 逐字确认末段最后一句是完整句意与明确结论落点，严禁把切点卡在转折词、铺垫引子或未说完的破折号半句上**（例如「但是这个意图电商——」「比如……」「接下来我们看……」），并核对尾点不切入下一句起音（末句语音加 `30–50ms` 微淡出）。若某段自然尾点刚好是引子句而非结论句，须采用以下任一方式收口：① 将尾点前收至上一句完整定论，或向后延伸至该观点完整说完（为保证每条子片独立成篇且收尾完整，允许相邻子片在边界处保留 1 句极短核心结论重叠，**独立完片感高于机械零重叠**）；② 末段显式拼入一句回扣核心定论的完整口播句并配独立收尾落版（`outro`）。每条子片均须在 `master-plan.json` 中显式写出 `opening_hook`（开篇首句与钩子设计）、`ending_sentence`（收尾完整末句原文）与 `outro_design`（收尾画面、停留时长与 BGM 淡出方式），供规划审查。
-2. **五槽位正交剪辑范式、5 套独立调色 LUT、零胶囊等距字幕阶梯与 `C1–C5` 封面拓扑（严禁“同一布局换 5 套颜色”！）**：
-   - **灰度盲测反克隆铁律**：将 `00-master`、`01-v1`、`02-v2`、`03-v3`、`04-v4` 全部去色转为黑白灰后，任意 3 秒内必须能仅凭**画幅架构、人物出镜形态、零胶囊字幕排版体制、剪辑蒙太奇语法**一眼区分出 5 种截然不同的视频类型！完整风格库与选型矩阵见 [editing-styles.md](editing-styles.md)（商业访谈默认推荐 **`S01 + S02 + S03 + S04 + S08`** 五槽组合）：
-     - **`00-master`（默认 `S01` 商业旗舰深度叙事 · `master-editorial.cube` · 封面 `C1` 深墨左切光杂志风）**：
-       - **剪辑与人物**：`H1/H2` 冷开 + 三幕章节推进，全屏锁眼缓推口播（`55%`）↔ 紧凑 `4:3`/`16:10` 开放式侧分栏（`L2`，`v2≥75%`）+ 无框排版锚点与 `DV` 数据动效；
-       - **字幕体制（`SUB1`）**：**严禁 `.pill` 半透明胶囊底盒！**采用左侧铜青标尺 + 无框黑宋混排双字重字幕（`46px`，**`top: 1412px`**）。
-     - **`v1`（默认 `S02` 高冲网感快剪冲击流 · `v1-crisp-contrast.cube` · 封面 `C2` 高对比双截战报风）**：
-       - **剪辑与人物（禁用顶部矩形讲座 PiP！）**：`H1` 前置最狠暴论冷开 + 全屏句界三级阶梯跳切（严禁句中假跳切！非连续删句切点用 `JL3` B-roll 遮切，ASL `2.0–3.2s`）+ `KT1/KT4` 巨字重锤砸屏 / `PF6` 3D 视窗 + `TR5/TR9` 甩切/RGB 冲击转场，前 3 秒必配重音冲击音效；
+   - **切点语义与声学闭环硬规（严禁无结尾半句截断或切入下句起音）**：规划每条子片（尤其是倒叙或分段切出的切片）的 `time_slices` 尾点时，**必须对照 `aligned_transcript` 逐字确认末段最后一句是完整句意与明确结论落点，严禁把切点卡在转折词、铺垫引子或未说完的破折号半句上**（例如「但是这个意图电商——」「比如……」「接下来我们看……」），并核对尾点不切入下一句起音（末句语音加 `30–50ms` 微淡出）。若某段自然尾点刚好是引子句而非结论句，须采用以下任一方式收口：① 将尾点前收至上一句完整定论，或向后延伸至该观点完整说完（为保证每条子片独立成篇且收尾完整，允许相邻子片在边界处保留 1 句极短核心结论重叠，**独立完片感高于机械零重叠**）；② 末段显式拼入一句回扣核心定论的完整口播句并配独立收尾落版（`outro`）。每条子片均须在 `master-plan.json` 中显式写出 `account_group`、`account_ip_name`、`opening_hook`（开篇首句与钩子设计）、`ending_sentence`（收尾完整末句原文）与 `outro_design`（收尾画面、停留时长与 BGM 淡出方式），供规划审查。
+2. **`00–04` ↔ `G0–G4` 五大账号组人设方向、正交剪辑范式、5 套独立 LUT、零胶囊等距字幕与封面 IP 名硬绑定（严禁换色克隆或账号 IP 串台！）**：
+   - **灰度盲测反克隆 & 账号对位铁律**：`00–04` 产出的视频内容方向、剪辑语法与封面刊头 IP 名必须严格与 `G0–G4` 五个账号组一一对应（三平台共享同一 IP 名，严禁把任何手机号写入文件！），且全部去色转黑白灰后任意 3 秒内能一眼区分 5 种截然不同的视频类型（完整总谱见 [editing-styles.md](editing-styles.md)）：
+     - **`00-master` ↔ `G0` · `跨境AI十亿增长局`（宏观战略大盘与十亿级增长格局 · 默认 `S01` · `master-editorial.cube` · 封面 `C1`）**：
+       - **方向与剪辑**：立足行业大盘、跨境 × AI 规模增长格局与组织进化全景；`H1/H2` 冷开 + 三幕章节推进，全屏锁眼缓推口播（`55%`）↔ 紧凑 `4:3`/`16:10` 开放式侧分栏（`L2`，`v2≥75%`）+ 无框排版锚点与 `DV` 数据动效；Track B 封面刊头印 **`跨境AI十亿增长局`**；
+       - **字幕体制（`SUB1`）**：左侧铜青标尺 + 无框黑宋混排双字重字幕（`46px`，**`top: 1412px`**，禁 `.pill`）。
+     - **`01-v1` ↔ `G1` · `时奕聊AI经营`（“聊”：犀利对谈破题与经营体感暴击 · 默认 `S02` · `v1-crisp-contrast.cube` · 封面 `C2`）**：
+       - **方向与剪辑（禁用顶部矩形讲座 PiP！）**：聚焦“聊”的鲜活交锋感、一线痛点直球发问与高密度反差；`H1` 前置最狠暴论冷开 + 全屏句界三级阶梯跳切（ASL `2.0–3.2s`，非连续切点用 `JL3` B-roll 遮切）+ `KT1/KT4` 巨字重锤砸屏 / `PF6` 3D 视窗 + `TR5/TR9` 冲击转场；Track B 封面刊头印 **`时奕聊AI经营`**；
        - **字幕体制（`SUB2`）**：无底框 `9px` 重黑边弹簧跳字（`52px`，关键词 `60px` 弹性上跳，**`top: 1320px`**）。
-     - **`v2`（默认 `S03` 全画幅动态白板图解流 · `v2-warm-paper.cube` · 封面 `C3` 暖白报纸社论胶片框风）**：
-       - **剪辑与人物（禁用 `width > 320px` 半屏矩形 PiP 与一切霓虹/故障！）**：`H4/H2` 痛点切入 + 整块 `1080×1920` 释放为可平移推拉（`C6` Camera Pan & Zoom）的 `#F2EFE9` 无框暖纸研究画布（`70%+` 图解主导，说话人仅首尾出镜或角落 `≤180px` 圆形讲者微章 `L5`），配 `DV2/DV3` 面积挤压/趋势面与纸张马克笔拟音；
-       - **字幕体制（`SUB3`）**：亮底深墨无框印刷字幕 + 关键词底部暖橙/翡翠荧光笔实时手绘扫过（`46px`，**`top: 1458px`**）。
-     - **`v3`（默认 `S04` 宽银幕电影独白留白流 · `v3-obsidian-film.cube` · 封面 `C4` 黑曜石宽银幕剧照风）**：
-       - **剪辑与人物（禁用一切圆角信息盒、SVG 图表、`//` 科技胶囊、贴纸与轻快/气泡音效！）**：`H6` 时空坐标呼吸冷开 + 同源虚化底 `--of-cutout: 1` 浅景深光学特写 + `L4/L6` `2.39:1` 宽银幕胶片三联画并置 + `KT3` 光学散焦收拢显影金句 + 大提琴低频氛围铺底配重句 `Silence Drop`，终帧真溶黑 `#000000`；
-       - **字幕体制（`SUB4`）**：影院级 `+2.5px` 宽字距暖象牙细衬线纯字（`42px`，**`top: 1504px`**）。
-     - **`v4`（默认 `S08` 双视角交锋/认知证伪流 · `tech-keynote.cube` · 封面 `C5` 头版倒置·误区划除交锋画报）**：
-       - **剪辑与人物（禁用讲座大框与 `v1` 重黑边弹簧字；原片含明确实操步骤时可弹性换 `S10` 实操笔记流，含完整故事脉络可换 `S07` 时间线故事流，但仍独占第 5 槽 LUT）**：`H5` 靶子旧共识亮出（`0–4s`）→ `DV4` 手绘珊瑚红双笔疾速划除并配低频打断音 → `L7` 冷暖双域无框斜切/上下交锋分屏拆解真相 + `L1` 近景直视定论（ASL `2.6–4.2s`）；
-       - **字幕体制（`SUB5` / 切 `S10` 时用 `SUB6`）**：极简几何无框等宽混排 + 电光青 `#38BDF8` `2px` 刻度下划线（`46px`，**`top: 1366px`**）——**五槽字幕 `top` 精准形成 `1320 / 1366 / 1412 / 1458 / 1504px` 等距阶梯（相邻互差 `46px ≥ 40px`、总跨度 `184px ≥ 160px`）！**
-   - 将 4 条子片的 `editing_style`（`S01–S10`）、`color_lut`、`cold_open`（`H1–H6`）、精剪 `time_slices`、`silence_drops`、`layout_paradigm`、`speaker_mode`、`subtitle_system`（`SUB1–SUB6`）、`cover_topology`（`C2–C5`）与独立补素材清单完整写入 `master/script/master-plan.json`。
+     - **`02-v2` ↔ `G2` · `辰奕AI经营实战`（企业级 AI 经营方法模型与算账推演 · 默认 `S03`［含实操步骤可切 `S10`］· `v2-warm-paper.cube` · 封面 `C3`）**：
+       - **方向与剪辑（禁用 `width > 320px` 半屏矩形 PiP 与霓虹故障！）**：聚焦辰奕企业级 AI 经营框架、投入产出算账模型与 SOP 落地推演；`H4/H2` 切入 + 整块画幅释放为 `#F2EFE9` 无框暖纸研究画布（`70%+` 图解主导，说话人仅首尾或角落 `≤180px` 圆形微章 `L5`），配 `DV2/DV3` 面积挤压与纸张马克笔拟音；Track B 封面刊头印 **`辰奕AI经营实战`**；
+       - **字幕体制（`SUB3` / 切 `S10` 时用 `SUB6`）**：亮底深墨无框印刷字幕 + 底部荧光笔实时手绘扫过（`46px`，**`top: 1458px`**）。
+     - **`03-v3` ↔ `G3` · `老郑AI经营实战`（老郑一线操盘复盘与认知证伪避坑 · 默认 `S08`［含案例时间线可切 `S07`］· `tech-keynote.cube` · 封面 `C5`）**：
+       - **方向与剪辑（禁用讲座大框与 `v1` 重黑边弹簧字！）**：紧扣“老郑实战”人设，抽取行业普遍踩坑的旧共识靶子 vs 老郑一线真刀真枪的实战判断；`H5` 靶子旧共识亮出（`0–4s`）→ `DV4` 珊瑚红双笔疾速划除并配低频打断音 → `L7` 冷暖双域无框斜切/上下交锋分屏拆解真相 + `L1` 近景直视定论（ASL `2.6–4.2s`）；Track B 封面采用 **`C5` 头版倒置·误区划除交锋画报**，刊头印 **`老郑AI经营实战`**；
+       - **字幕体制（`SUB5`）**：极简几何无框等宽混排 + 电光青 `#38BDF8` `2px` 刻度下划线（`46px`，**`top: 1366px`**）。
+     - **`04-v4` ↔ `G4` · `老郑AI经营论`（“经营论”：商业周期本质与企业家人性独白 · 默认 `S04` · `v3-obsidian-film.cube` · 封面 `C4`）**：
+       - **方向与剪辑（禁用圆角信息盒、SVG 图表、`//` 科技胶囊、贴纸与气泡音效！）**：紧扣“经营论”思想高度，沉淀穿越周期的底层商业规律与组织哲思独白；`H6` 时空坐标呼吸冷开 + 同源虚化底 `--of-cutout: 1` 浅景深光学特写 + `L4/L6` `2.39:1` 宽银幕胶片构图 + `KT3` 光学散焦显影金句 + 大提琴低频氛围铺底配重句 `Silence Drop`，终帧真溶黑 `#000000`；Track B 封面采用 **`C4` 黑曜石宽银幕剧照海报**，刊头印 **`老郑AI经营论`**；
+       - **字幕体制（`SUB4`）**：影院级 `+2.5px` 宽字距暖象牙细衬线纯字（`42px`，**`top: 1504px`**）——**五槽字幕 `top` 精准形成 `1320 (v1) / 1366 (v3) / 1412 (master) / 1458 (v2) / 1504 (v4) px` 等距阶梯（相邻互差 `46px ≥ 40px`、总跨度 `184px ≥ 160px`）！**
+   - 将 4 条子片的 `account_group`（`G1–G4`）、`account_ip_name`、`editing_style`（`S01–S10`）、`color_lut`、`cold_open`（`H1–H6`）、精剪 `time_slices`、`silence_drops`、`layout_paradigm`、`speaker_mode`、`subtitle_system`（`SUB1–SUB6`）、`cover_topology`（`C2–C5`）与独立补素材清单完整写入 `master/script/master-plan.json`。
 3. **【闸门 2】母片与 4 子片方案确认（默认开启，指令带「一路跑完」可跳过）**：
    - 若带「一路跑完」：`gates.master_approved = "skipped_auto_run"`，直接进入步骤 E4；
    - 否则更新 `run.json`（`status: "waiting_approval"`、`step: "E3"`、`gates.pending_gate: "gate_2_master_plan"`），停下向用户展示：① 母片成片、目标平台封面路径与文案摘要；② `master-plan.json` 中的 4 条延伸子片差异化规划表；
@@ -223,10 +224,10 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 4 个目录 `variants/v1-<风格>/`、`variants/v2-<风格>/`、`variants/v3-<风格>/`、`variants/v4-<风格>/` 完全物理隔离，主 Agent 默认同时派发 **4 个子代理**分别负责一条子片（不具备派子代理能力时串行完成）。
 - **子代理权限边界（与 [../SKILL.md](../SKILL.md) 保持一致）**：4 个子代理仅在各自专属目录 `variants/vN-<风格>/` 内拥有局部完整制作权（可写各自 `film/film.html`、独立渲染与初检、产出本子片封面/文案初稿及单条 `publish.json`），**严禁修改 `raw/`、`master-assets/`、`master/` 及另外三条子片目录，严禁调用任何发布操作或付费生成，严禁在运行目录外存放文件**。
 - 每条子片均以 `master-assets/` 为干净底料（需要局部引用母片某段特效时可按需引用，但不直接把焊死旧花字与旧 BGM 的母片当唯一底轨；原片含 BGM 时统一使用 `vocals_track` 配新风格 BGM），完整执行：
-  1. **各自按实际情况独立候选筛片、六维核验签收与音效归一化**：先测定 `speaker_framing` 并锁定本子片精剪 `time_slices` 后的 `scenes/subtitles.html` 精确时间戳，在各自 `script/storyboard.json` 写明零复读 `cue_sync_map`（单锚点 `≤5` 字且与字幕重合 `<50%`），按 [sourcing.md](sourcing.md) 优先走 Pixabay 竖屏稳像源将 `2–4` 个候选先下到本子片 `materials/`，**亲自看图检查 `candidate-sheet-*.jpg` 确认台词语义咬合、地域零穿帮、竖屏主体不被字幕压挡、影调契合本子片风格（如 `v3` 电影流禁高饱和亮片与 CG，`v4` 交锋流禁廉价卡通）且通过 `YAVG≥18`、`scdet<16`、`hf_jerk≤2.40px`、跨 5 片 `64-bit dHash > 10` 后，必须用 `fetch_asset.py register --shot <镜号> --fit-reason "<≥12字具体实看结论>"` 签收入本子片 `film/assets/credits.json`（严禁子代理盲拿 API 首条水片充数！）**，并对 `film/assets/` 短音效执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets`；
-  2. **独立 OpenFilm 剪辑、构建 `bgm-bed.m4a` 与出片初检**：拷入本槽位对应 `.cube` LUT 至 `film/looks/`，挂齐 `--of-lut`、同源虚化光学抠像（`width≥1080px`）、Boxless 去框化特效与对应 `SUB2/SUB3/SUB4/SUB5(SUB6)` 零胶囊等距字幕，人声轨挂 `master-assets/clips/*-voice-treated.m4a`；写好 `film.html` 后先跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" build-bgm-bed --film-dir . --bgm assets/<bgm> --out assets/bgm-bed.m4a --drops "<t1:t2>"` 生成自动闪避与抽空留白铺底床，再执行 `OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers <N> --out ../output/0N-vN-<风格短名>.mp4`（单子片独立跑配 `--workers 6`；2 子片同跑各配 `--workers 4`；**4 子片全并行同时渲染时统一各配 `--workers 2`**，`4 × 2 = 8` 路刚好跑满 NVIDIA `h264_nvenc` 硬编上限；`<24GB` 内存机器自动降为 `2 + 2` 分两波各配 `--workers 4`），逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/0N-vN-<风格短名>.mp4 --film-dir . --out-dir ../output/check`，亲自打开 `safezone-grid/tail/cuts/broll/pip/cutouts.png` 目检零 `hard_failures`；
-  3. **独立目标平台诚实文案**：按 [copywriting.md](copywriting.md) 紧贴本子片 `content_archetype` 与实际剪出的冷开首句、落点撰写四项文案（禁虚假破局清单承诺、禁生造歧义词、禁描述带秒数），落盘 `publish/publish.json`；
-  4. **独立目标平台杂志封面（若 `covers_enabled` 为 `true`）**：按 [cover-design.md](cover-design.md)（非「意图电商」系列按各自 `C2/C3/C4/C5` 杂志拓扑：先共用或各自基于 20–30 帧 `contact-sheet.jpg` 五维选出互不撞脸神态帧，`C3` 暖白底禁贴裸抠像改用胶片相框实拍裁切，`C5` 采用头版倒置·误区划除交锋构图，主标题 `≥104px`/`≥100px`，零小胶囊标签堆砌），产出 `covers/0N-vN-<平台>.png` 与 `cover-spec.json`；
+  1. **各自按实际情况独立候选筛片、六维核验签收与音效归一化**：先测定 `speaker_framing` 并锁定本子片精剪 `time_slices` 后的 `scenes/subtitles.html` 精确时间戳（凡命中 `compliance-bleeps.json` 敏感词处一律写脱敏词如 `某音`！），在各自 `script/storyboard.json` 写明零复读 `cue_sync_map`（单锚点 `≤5` 字且与字幕重合 `<50%`），按 [sourcing.md](sourcing.md) 优先走 Pixabay 竖屏稳像源将 `2–4` 个候选先下到本子片 `materials/`，**亲自看图检查 `candidate-sheet-*.jpg` 确认台词语义咬合、地域零穿帮、竖屏主体不被字幕压挡、影调契合本子片风格（如 `v4` 电影流禁高饱和亮片与 CG，`v3` 实战交锋流禁廉价卡通）且通过 `YAVG≥18`、`scdet<16`、`hf_jerk≤2.40px`、跨 5 片 `64-bit dHash > 10` 后，必须用 `fetch_asset.py register --shot <镜号> --fit-reason "<≥12字具体实看结论>"` 签收入本子片 `film/assets/credits.json`（严禁子代理盲拿 API 首条水片充数！）**，并对 `film/assets/` 短音效执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets`；
+  2. **独立 OpenFilm 剪辑、构建 `bgm-bed.m4a` 与出片初检**：拷入本槽位对应 `.cube` LUT 至 `film/looks/`，挂齐 `--of-lut`、同源虚化光学抠像（`width≥1080px`）、Boxless 去框化特效与对应 `SUB2/SUB3(SUB6)/SUB5/SUB4` 零胶囊等距字幕，人声轨挂已含 `1000Hz` 合规哔声的 `master-assets/clips/*-voice-treated.m4a`；写好 `film.html` 后先跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" build-bgm-bed --film-dir . --bgm assets/<bgm> --out assets/bgm-bed.m4a --drops "<t1:t2>"` 生成自动闪避与抽空留白铺底床，再执行 `OPENFILM_NO_BROWSER=1 openfilm render --fps 30 --loudness=-14 --workers <N> --out ../output/0N-vN-<风格短名>.mp4`（单子片独立跑配 `--workers 6`；2 子片同跑各配 `--workers 4`；**4 子片全并行同时渲染时统一各配 `--workers 2`**，`4 × 2 = 8` 路刚好跑满 NVIDIA `h264_nvenc` 硬编上限；`<24GB` 内存机器自动降为 `2 + 2` 分两波各配 `--workers 4`），逐镜 `openfilm look` + 全片 `openfilm look --full` & `ffprobe` + 必跑 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/0N-vN-<风格短名>.mp4 --film-dir . --out-dir ../output/check`，亲自打开 `safezone-grid/tail/cuts/broll/pip/cutouts.png` 目检零 `hard_failures`；
+  3. **独立目标平台诚实文案（对齐本槽账号 IP 人设）**：按 [copywriting.md](copywriting.md) 紧贴本槽账号定位（`v1=时奕聊AI经营`、`v2=辰奕AI经营实战`、`v3=老郑AI经营实战`、`v4=老郑AI经营论`）、本子片 `content_archetype` 与实际剪出的冷开首句、落点撰写四项文案（禁虚假破局清单承诺、禁生造歧义词、禁未脱敏敏感词、禁描述带秒数），落盘 `publish/publish.json`（含 `account_group` 与 `account_ip_name`）；
+  4. **独立目标平台竖版杂志封面（若 `covers_enabled` 为 `true`，强制头顶居中标题 & 严禁账号 IP 名串台！）**：按 [cover-design.md](cover-design.md)（非「意图电商」系列按各自 `C2 [v1] / C3 [v2] / C5 [v3] / C4 [v4]` 杂志拓扑：**两行封面字幕一律置于人物头顶上方水平居中（`text-align: center`），且顶部居中刊头精确印本槽位绑定的账号 IP 名**［`v1=时奕聊AI经营`、`v2=辰奕AI经营实战`、`v3=老郑AI经营实战`、`v4=老郑AI经营论`］，严禁串用其他号组名或把标题放底部！先基于 20–30 帧 `contact-sheet.jpg` 五维选出互不撞脸神态帧，`C3` 暖白底禁贴裸抠像改用胶片相框实拍裁切，严格输出三平台竖版尺寸：**抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`**），产出 `covers/0N-vN-<平台>.png` 与 `cover-spec.json`；
   5. **子片单条审核**：按 [publish-audit.md](publish-audit.md)（含 `--publish-json` 复跑 `audit-render`）完成本子片全目标平台审核并写回 `publish/publish.json` 的 `audit`。
 
 ### 步骤 E5：主 Agent 统一复核、跨 5 片矩阵门禁与路径收口
@@ -278,8 +279,11 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
     "pending_gate": null
   },
   "master_assets": "runs/20261124-1400-意图电商专题/master-assets/manifest.json",
+  "video_orientation": "portrait",
   "master": {
     "prefix": "00-master",
+    "account_group": "G0",
+    "account_ip_name": "跨境AI十亿增长局",
     "video": "runs/20261124-1400-意图电商专题/master/output/00-master-意图电商专题.mp4",
     "covers": {
       "douyin": "runs/20261124-1400-意图电商专题/master/covers/00-master-douyin.png",
@@ -292,15 +296,17 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
     {
       "id": "v1",
       "prefix": "01-v1",
-      "style": "高节奏实证风",
-      "dir": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风",
-      "video": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风/output/01-v1-高节奏实证风.mp4",
+      "account_group": "G1",
+      "account_ip_name": "时奕聊AI经营",
+      "style": "痛点对谈快剪",
+      "dir": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪",
+      "video": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪/output/01-v1-痛点对谈快剪.mp4",
       "covers": {
-        "douyin": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风/covers/01-v1-douyin.png",
-        "shipinhao": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风/covers/01-v1-shipinhao.png",
-        "xhs": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风/covers/01-v1-xhs.png"
+        "douyin": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪/covers/01-v1-douyin.png",
+        "shipinhao": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪/covers/01-v1-shipinhao.png",
+        "xhs": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪/covers/01-v1-xhs.png"
       },
-      "publish_json": "runs/20261124-1400-意图电商专题/variants/v1-高节奏实证风/publish/publish.json"
+      "publish_json": "runs/20261124-1400-意图电商专题/variants/v1-痛点对谈快剪/publish/publish.json"
     }
   ],
   "delivery_dir": "runs/20261124-1400-意图电商专题/delivery",
@@ -331,6 +337,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "path": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4",
       "vocals_track": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI-vocals.wav",
       "vocals_treated_track": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI-voice-treated.m4a",
+      "compliance_bleeps": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI-compliance-bleeps.json",
       "duration_sec": 62.4,
       "aligned_transcript": "runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-transcript.json"
     }
@@ -345,21 +352,26 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 }
 ```
 
-### 3. `master/script/master-plan.json`（4 条子片延伸规划表）
+### 3. `master/script/master-plan.json`（4 条子片对位 `G1–G4` 延伸规划表）
 
 ```json
 {
   "content_archetype": "actionable_method",
+  "master_account_group": "G0",
+  "master_account_ip_name": "跨境AI十亿增长局",
   "master_editing_style": "S01",
   "master_duration_sec": 108.0,
-  "split_strategy": "hybrid_split_and_myth_clash_4_variants",
+  "video_orientation": "portrait",
+  "split_strategy": "persona_aligned_4_variants_G1_to_G4",
   "target_platforms": ["douyin", "xhs", "shipinhao"],
   "variants": [
     {
       "id": "v1",
       "prefix": "01-v1",
+      "account_group": "G1",
+      "account_ip_name": "时奕聊AI经营",
       "editing_style": "S02",
-      "style_slug": "高冲痛点快剪",
+      "style_slug": "痛点对谈快剪",
       "color_lut": "v1-crisp-contrast.cube",
       "layout_paradigm": "fullscreen_jumpcut_kinetic",
       "speaker_mode": "fullscreen_step_zoom",
@@ -376,7 +388,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "time_slices": [[54.2, 56.8], [7.2, 31.5], [34.0, 48.6]],
       "silence_drops": [[28.4, 29.1]],
       "cold_open": "H1 前置2.6s最狠结论金句冷开，切净原片前7.2s搭话冷场，删句切点用JL3实拍B-roll遮切",
-      "angle": "前3秒抛反差结果，用真实搜索对比界面视窗实证意图匹配",
+      "angle": "对位「时奕聊AI经营」：前3秒犀利直球破题，用真实搜索对比视窗实证意图匹配",
       "opening_hook": "前置2.6s结论金句冷开（裁净悬空代词，巨字锚点补全主语冲突）",
       "ending_sentence": "意图电商不是追着你推旧词，而是真正读懂你的上下文需求。",
       "outro_design": "O1定帧印章落版：末句完整落音加40ms微淡出后切出无框金句收束，停留可读1.8s并留0.8s尾韵配合bgm-bed自然淡出",
@@ -387,10 +399,12 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "brand_slogan_mode": "chenyi_default"
     },
     {
-      "id": "v4",
-      "prefix": "04-v4",
+      "id": "v3",
+      "prefix": "03-v3",
+      "account_group": "G3",
+      "account_ip_name": "老郑AI经营实战",
       "editing_style": "S08",
-      "style_slug": "双域交锋证伪",
+      "style_slug": "操盘交锋破局",
       "color_lut": "tech-keynote.cube",
       "layout_paradigm": "dual_zone_myth_clash_L7",
       "speaker_mode": "split_clash_and_closeup",
@@ -406,8 +420,8 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "source_clips": ["runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4"],
       "time_slices": [[8.5, 19.2], [48.8, 62.0]],
       "silence_drops": [[56.2, 56.8]],
-      "cold_open": "H5 先亮出卖家普遍死磕关键词出价的旧误区，1.6s处DV4珊瑚红双笔疾速划除并配低频打断音切入真相",
-      "angle": "跨段抽取旧共识靶子vs意图匹配新真相，双色温交锋纠偏",
+      "cold_open": "H5 先亮出卖家普遍死磕关键词出价的旧误区，1.6s处DV4珊瑚红双笔疾速划除并配低频打断音切入老郑实战判断",
+      "angle": "对位「老郑AI经营实战」：跨段抽取旧共识靶子vs一线操盘新真相，双色温交锋纠偏",
       "opening_hook": "靶子误区打碎冷开（旧经验vs新规则正面碰撞）",
       "ending_sentence": "谁先把商品语境写给AI看懂，谁才接得住下一代自然流量。",
       "outro_design": "O1真相定论无框巨字收束：停留可读1.8s并留0.8s尾韵自然淡出",
@@ -416,21 +430,56 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "supplement_assets_plan": ["买家手机语音提问实拍B-roll", "仓库出货实拍B-roll", "归一化低频打断音效"],
       "cover_spec": "track_b_C5",
       "brand_slogan_mode": "chenyi_default"
+    },
+    {
+      "id": "v4",
+      "prefix": "04-v4",
+      "account_group": "G4",
+      "account_ip_name": "老郑AI经营论",
+      "editing_style": "S04",
+      "style_slug": "商业周期独白",
+      "color_lut": "v3-obsidian-film.cube",
+      "layout_paradigm": "widescreen_239_cinema_monologue",
+      "speaker_mode": "shallow_dof_closeup_and_239_triptych",
+      "subtitle_system": "SUB4_top1504_no_pill",
+      "cover_topology": "C4_obsidian_widescreen_still",
+      "color_palette": {
+        "bg": "#050506",
+        "bg_2": "#111216",
+        "text": "#F5EFE6",
+        "accent": "#D4AF37",
+        "warn": "#9C7A3C"
+      },
+      "source_clips": ["runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4"],
+      "time_slices": [[22.0, 48.6]],
+      "silence_drops": [[41.2, 42.0]],
+      "cold_open": "H6 时空坐标静默呼吸冷开，切入商业流量底层迁移的本质独白",
+      "angle": "对位「老郑AI经营论」：抽离术层技巧，沉淀渠道权力变迁与商业周期底层哲思",
+      "opening_hook": "2.39:1宽银幕低频弦乐切入核心经营哲学判断",
+      "ending_sentence": "每一次交互入口换代，淘汰的从来不是货，而是旧时代的经营思维。",
+      "outro_design": "O2金句余韵散焦显影+真溶黑#000000，留1.0s低频尾韵自然消散",
+      "visual_style": "同源虚化光学浅景深特写 + L6宽银幕胶片视窗 + KT3光学散焦显影金句",
+      "bgm_mood": "大提琴低频氛围铺底床 + 核心论断前Silence Drop",
+      "supplement_assets_plan": ["深夜城市航拍稳像B-roll", "港口集装箱慢镜头实拍B-roll"],
+      "cover_spec": "track_b_C4",
+      "brand_slogan_mode": "chenyi_default"
     }
   ]
 }
 ```
 
-### 4. `delivery/0N-*/copy.md` 标准交付模板（仅输出目标平台块）
+### 4. `delivery/0N-*/copy.md` 标准交付模板（标明对应账号 IP 名与竖版封面精确尺寸）
 
 ```markdown
-# 00-master · 意图电商专题（人工上传可直接复制）
+# 00-master · 跨境AI十亿增长局 · 意图电商专题（人工上传可直接复制）
 
-- 成片：`runs/<目录>/delivery/00-master/00-master-<话题短名>.mp4`
+- 对应账号组：`G0` · `跨境AI十亿增长局`（抖音 / 小红书 / 视频号同名 IP）
+- 成片：`runs/<目录>/delivery/00-master/00-master-<话题短名>.mp4`（竖版 1080×1920）
+- 合规脱敏记录：已通过 `scan-compliance` + `prepare-voice --bleeps` 处理（列出命中的敏感词及哔声时间点；无命中填「零违规词」）
 - 审核结论：全平台硬门禁通过（见 `runs/<目录>/master/publish/publish.json`）
 
 ## 抖音（douyin）
-- 封面图：`runs/<目录>/delivery/00-master/00-master-douyin.png`（1080×1920）
+- 封面图：`runs/<目录>/delivery/00-master/00-master-douyin.png`（1080×1920 · 头顶居中标题）
 - 封面标题（两行）：第一行 / 第二行
 - 表单标题（≤30字）：...
 - 视频描述：...
@@ -438,7 +487,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 本条发布组合（3-5个，整行复制）：`#词1 #词2 #词3 #词4 #词5`
 
 ## 小红书（xhs）
-- 封面图：`runs/<目录>/delivery/00-master/00-master-xhs.png`（1080×1440）
+- 封面图：`runs/<目录>/delivery/00-master/00-master-xhs.png`（1242×1660 · 头顶居中标题）
 - 封面标题（两行）：第一行 / 第二行
 - 笔记标题（≤18字，上限20字）：...
 - 视频描述：...
@@ -446,7 +495,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 本条发布组合（3-8个，整行复制）：`#词1 #词2 #词3 #词4 #词5`
 
 ## 视频号（shipinhao）
-- 封面图：`runs/<目录>/delivery/00-master/00-master-shipinhao.png`（1080×1920）
+- 封面图：`runs/<目录>/delivery/00-master/00-master-shipinhao.png`（1080×1440 · 头顶居中标题）
 - 封面标题（仅封面图用，勿填短标题框）：第一行 / 第二行
 - 短标题（6-16字，无空格无禁用标点）：`...`
 - 视频描述：...

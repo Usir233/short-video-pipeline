@@ -1,6 +1,6 @@
 ---
 name: short-video-pipeline
-description: 在本工作区按固定流程做竖屏短视频并准备三平台分发物料：支持单条视频（热点/指定主题/复刻/已有成片处理）与多风格矩阵裂变（入口 E：原片+素材 → 粗剪确认确立母素材 → 强制固定 1 完整特效母片 + 4 条不同风格子片，各自独立补素材、3 平台封面与文案，路径规范化打包交付手动发布；CreatorHub 当前默认停用，仅显式要求时按需启用）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和4条子片」「一条变四条」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
+description: 在本工作区按固定流程做竖屏短视频（统一只制作 1080×1920 竖版视频，不制作横版；三平台竖版封面精确尺寸为抖音 1080×1920、小红书 1242×1660、视频号 1080×1440，封面字幕统一置于人物头顶水平居中）并准备三平台分发物料：支持单条视频与多风格矩阵裂变（入口 E：原片+素材 → 合规消音脱敏与母素材确立 → 强制固定 00–04 对应 G0–G4 五大账号 IP 方向的 1 母片 + 4 子片，各自独立补素材、印对应账号 IP 名的三平台封面与文案，打包交付手动发布；CreatorHub 当前默认停用）。用户说「跑一条」「做一条视频」「按热点做」「主题：xxx」「复刻这条」「二创」「做同款」「发一条」「写三平台文案」「做封面」「做母片和4条子片」「一条变四条」「做母片和3条子片」「一条变三条」「一鱼多吃」「母片裂变」，或给出参考视频/原片素材/待发成片时使用。
 ---
 
 # 短视频流水线
@@ -67,7 +67,8 @@ description: 在本工作区按固定流程做竖屏短视频并准备三平台�
 
 - 「参考爆款」：A 或 B 里加做步骤 2，优先读取 `素材投递区/参考爆款/` 下的参考视频或用工作区 `yt-dlp` 下载公开参考视频（仅显式启用 CreatorHub 时才调用其关键词采集/分享下载）。
 - 「只发抖音」「不发小红书」等：只产出指定平台的文案/封面与分发物料。
-- 「带封面」「做意图电商封面」：启用 [references/cover-design.md](references/cover-design.md) 双轨封面规范（「意图电商」系列走 Track A 专属模版，其他口播主题走 Track B 通用商业杂志拓扑 `C1–C5`，绝不跨系列混套「意图电商」标题图），过审后停在 `status: "made"` 交付用户手动连同封面发布。
+- **全竖版视频与头顶居中封面硬约定**：后续制作的视频**全部统一制作竖版 `1080×1920 (9:16)`，不制作横版视频**；三平台定制封面统一输出对应竖版精确尺寸（**抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`**），且**封面字幕（两行主标题）一律添加到人物头顶上方、水平居中（`text-align: center`）**。
+- 「带封面」「做意图电商封面」：启用 [references/cover-design.md](references/cover-design.md) 双轨封面规范（「意图电商」系列走 Track A 专属模版；其他口播主题走 Track B 通用商业杂志拓扑 `C1–C5`，且**刊头微标必须印对应账号精确 IP 名，严禁串用其它号组名或自造栏目名**），过审后停在 `status: "made"` 交付用户手动连同封面发布。
 - 「不做封面」「免封面」：跳过定制封面制作；过审后默认停在 `status: "made"`（`publish_mode: "manual_delivery"`）交付成片与可复制文案。
 - 「启用 CreatorHub 自动发」「用 CreatorHub 发」（或「直接自动发（封面后补）」）：显式开启 CreatorHub 通道，按步骤 0 与步骤 6.4 启动 `127.0.0.1:8000` 并执行串行自动发布（若已制作定制封面则由用户事后去各平台后台补换封面）。
 - 「不带品牌口号」：跳过 [references/copywriting.md](references/copywriting.md) 中的辰奕品牌主张原句与品牌标签。
@@ -229,8 +230,8 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 > **API 与外部素材「先候选暂存 → 六维制作要求核验 → 签收入库」硬铁律（严禁盲拿第 1 条充数！）**：
 > 凡通过 API（`openfilm get *-search` 或 `fetch_asset.py stock / news-page / video-clip`）查找的视觉或音频素材，**严禁只看英文标题/标签随便抓第 1 条直接塞进成片**！必须执行三步准入：① 先按具象动作词拉取 `2–4` 个候选进 `materials/` 并生成 `candidate-sheet-*.jpg` 4 帧检视拼图（若用 `openfilm get --take` 拉入 `film/assets/`，必须立即跑 `fetch_asset.py inspect-candidates` 补出检视拼图；音频必跑 `qc_video.py probe-audio`）；② **亲自看图/测音逐项核对六维制作要求**（台词具体事实咬合禁万能水片、地域文化零穿帮零水印、竖屏主体避开底部字幕禁盲裁、影调色温契合本片 `S01–S10` 风格与 LUT、清晰稳像零抖动、音频配器情绪匹配——**不达标立即从 `film/assets/` 删除淘汰并重搜，绝不将就**）；③ 仅对核验通过的素材运行 `fetch_asset.py register --shot <镜号> --fit-reason "<≥12字具体实看核验结论>"` 签收入 `film/assets/credits.json`（未经签收的补充素材会被 `qc_video.py audit-render` 直接硬阻断）。
 
-- **A. 人声前置母带、音乐、归一化音效、已有自存素材**：
-  - **口播人声前置母带（有人声必做）**：凡包含真人原片口播或分离干声，先运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源视频或vocals.wav> --out <film/assets/voice-treated.m4a>` 生成**等长零偏移**广播级压缩润色人声轨（把 `21 dB+` 原生峰均比压实至 `11–13 dB`，从根源杜绝渲染时撞死 `-14 LUFS` 砖墙限幅器）；
+- **A. 平台政策敏感词「哔」声消音、人声前置母带、音乐、归一化音效、已有自存素材**：
+  - **口播合规敏感词扫描与「1000Hz 哔声 + 某X 字幕」前置母带（有人声必做）**：凡包含真人原片口播或分离干声，先运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" scan-compliance --transcript <ASR.json或.srt> --out <materials/compliance-bleeps.json>` 自动检测国内短视频平台敏感词（跨平台词如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信→某信`、`快手→某手`、`淘宝/拼多多→某宝/某多多`，广告法极限/暴利承诺词、私域导流词、财税电商灰产词及 `死/杀/破产/诈骗` 等高危风控词；正常保留亚马逊/独立站/领星/AI 等业务词）；再运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源视频或vocals.wav> --out <film/assets/voice-treated.m4a> --bleeps <materials/compliance-bleeps.json>` 生成**等长零偏移**广播级压缩润色人声母带（对命中的敏感词精准静音并混入 `-18 dBFS` 标准 `1000Hz`「哔」声，同时下游全部字幕、花字、封面、文案同步替换为 `masked_text` 如 `某音`！若画面含违规平台 Logo/二维码同步打码或裁除）；
   - **配乐与短音效归一化**：先查 OpenFilm 本地复用库（`openfilm get my-media`），再查自带免费 CC0 库（`music-search`、`sfx-search`；离线动态贴纸 `sticker` 仅限高冲网感/轻量科普风点缀，商业纪实/电影风禁用）或 `fetch_asset.py stock --kind audio --source openverse`；全部 `<10s` 短音效入 `film/assets/` 后必须运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets` 统一峰值归一化至 `-3.0 dBTP`（自动硬拒真峰值 `< -30 dBTP` 的损坏静音废件）。
 - **B. 无框巨字排印、真实数据动效、流程拓扑**：直接写成 **OpenFilm 去框化（Boxless）动态视觉页面**（1080×1920，调用 [references/editing-vfx.md](references/editing-vfx.md) 的 `KT1–KT8` 动态排印与 `DV1–DV8` 数据模块；无真实数值严禁画伪进度条或空卡片外框）。
 - **C. 科技巨头发布新闻 / 产品报道 / 真实产品界面画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再调用 `scripts/fetch_asset.py` 抓取落盘：
@@ -263,7 +264,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 - 每条命令都在目标 `film/` 里执行（单片为 `runs/<目录>/film/`，入口 E 为 `master/film/` 或 `variants/vN-<风格>/film/`），先在根目录或按对应层级 source `env.sh`，直接调用 `openfilm`（即 `"$SVP_ROOT/node_modules/.bin/openfilm"`，避免硬写 `../../../` 在入口 E 深层目录失效）。
 - 项目就建在运行目录的 `film/`（入口 E 建在各自 `master/film/` 或 `variants/vN-<风格>/film/`），不用 OpenFilm 默认的项目位置。
-- 画面 1080×1920；**竖屏三平台四向安全区（硬红线）**：顶部留 `≥180px`（避开状态栏/灵动岛/顶部导航）、底部留 `≥360px`（`y ≤ 1560px`，严禁任何底卡、落款或字幕掉入 `y > 1560px` 遮挡死区）、**右侧留 `≥150px`（`x = 930..1080, y = 850..1500` 为点赞/评论/收藏按钮禁区，中下半屏卡片的可读文字、勾选框、徽章与出处必须稳控在 `x ≤ 920px`）**；主视觉和标题控制在 2 行以内，单行字幕严控 `≤14–15` 汉字，不遮挡、不折出第 3 行。
+- 画面统一固定为竖版 `1080×1920`（不制作横版视频）；**竖屏三平台四向安全区（硬红线）**：顶部留 `≥180px`（避开状态栏/灵动岛/顶部导航）、底部留 `≥360px`（`y ≤ 1560px`，严禁任何底卡、落款或字幕掉入 `y > 1560px` 遮挡死区）、**右侧留 `≥150px`（`x = 930..1080, y = 850..1500` 为点赞/评论/收藏按钮禁区，中下半屏卡片的可读文字、勾选框、徽章与出处必须稳控在 `x ≤ 920px`）**；主视觉和标题控制在 2 行以内，单行字幕严控 `≤14–15` 汉字，不遮挡、不折出第 3 行。
 - **人脸构图、PiP 分屏与防 PPT 感约定**：
   - 全屏 16:9 裁 9:16 口播叠加底部浮卡时，必须通过上提构图（如 `scale(1.08–1.10) translateY(-5%)`）让人物下巴稳在 `y ≤ 1120px` 以上，浮卡置于下巴以下且 `y ≤ 1540px`，**严禁卡片切嘴或糊住下巴**；
   - **`speaker-pip` 画中画五官完整保留与去杂墙硬规（严禁扁框切嘴/切下巴）**：画中画 `<video>` 在计入 `object-fit: cover` 与稳态 `clip-path: inset(T R B L)` 后，源片纵向保留区间必须满足 **上界 `v1 ≤ 0.22`（推荐 `≤0.16` 不削发顶）且下界 `v2 ≥ 0.72`（推荐 `≥0.75` 直至领麦，即 `inset_bottom / height ≤ 0.26`，严禁切在嘴唇或下巴以上！）**，可见净高 `≥ 340px`，且分镜内装饰框 `.pip-frame` 必须与稳态裁切可见框像素对齐（误差 `≤ 6px`）；若源片右侧有杂墙需裁除，**严禁把人物放大硬塞进 `>2:1` 扁长条窗（必切嘴）**，须改用居中紧凑 `4:3` / `16:10` 人像窗（如 `490×376px`）或左人像窗 + 右侧实时关键词看板；
@@ -315,8 +316,12 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - **触发条件与双轨路由**：当视频命中专属系列（如「意图电商」系列 → 走 [references/cover-design.md](references/cover-design.md) **Track A**），或用户附加「带封面」/ 走入口 E 开启封面时（非专属系列统一走 [references/cover-design.md](references/cover-design.md) **Track B 通用口播 5 套商业杂志拓扑 `C1–C5`**，绝不跨系列混套「意图电商」金色标题图）；未命中且未要求做封面时跳过。
 - **先整篇读 [references/cover-design.md](references/cover-design.md)** 执行五步工艺：
   1. **选片表 `contact-sheet.jpg` 五维选帧（强制前置）**：优先从干净源片抽取候选帧（单片 `16–24` 帧，入口 E `20–30` 帧）拼成 `materials/covers/contact-sheet.jpg` 并看图挑帧（眼神定焦、上唇自然微张不露下排牙、眼镜片无白反光、手势积极、头部不歪斜，严禁垂眼皮半闭眼废帧！同片各平台及跨 5 片取不同截帧）；
-  2. **按轨道与拓扑渲染巨字视觉锤**：承接 `6.1` 两行 `cover_title`（Track A 核对 `字号 × 字数 ≤ 980px`；Track B 强制主标题 `9:16 ≥ 104px`、`3:4 ≥ 100px`，禁用 `24–36px` 小胶囊标签对称排布、禁用小红书右半屏密集字表，亮底 `RGB>185` 严禁贴裸抠像改用胶片相框实拍裁切，深色底抠像做发丝去绿与边缘受光融合）；
-  3. 渲染三平台封面落盘至 `covers/douyin.png`（`1080×1920`）、`covers/shipinhao.png`（`1080×1920`）、`covers/xhs.png`（`1080×1440`），写入完整 `covers/cover-spec.json`（含 `track`、`topology`、`contact_sheet`、`selected_frames`）；
+  2. **人物头顶水平居中巨字标题与账号精确 IP 名绑定**：承接 `6.1` 两行 `cover_title`，**统一将封面字幕（两行主标题）放置在人物头顶上方区域、水平居中（`text-align: center`）**，人物头顶适当下移留出干净标题空间（严禁标题压额头/眉眼或沉在画面底部！）；**轨道 B 通用封面必须在顶部刊头居中微标印对应账号精确 IP 名**（入口 E 严格绑定：`00=跨境AI十亿增长局`、`01=时奕聊AI经营`、`02=辰奕AI经营实战`、`03=老郑AI经营实战`、`04=老郑AI经营论`，严禁串台或自造栏目名！Track A 保持原无账号名金色系列版式）；Track B 强制主标题字号：抖音 `≥ 104px`、小红书（`1242` 宽）`≥ 114px`、视频号 `≥ 100px`，禁用小胶囊标签堆砌，亮底 `RGB>185` 禁贴裸抠像；
+  3. **严格输出三平台竖版封面精确像素尺寸**：
+     - `douyin.png`：**`1080 × 1920 px`**（`9:16`）
+     - `xhs.png`：**`1242 × 1660 px`**（约 `3:4` 超清竖版）
+     - `shipinhao.png`：**`1080 × 1440 px`**（`3:4` 竖版）
+     写入完整 `covers/cover-spec.json`（含 `track`、`topology`、`account_ip_name`、`title_placement: "overhead_centered"`、`contact_sheet`、`selected_frames`）；
   4. **Agent 必须亲自打开全部 PNG 看图逐项核对，并通过 `qc_video.py audit-render` 内置封面硬门禁**，未全部通过不得进入下一步。
 
 ### 6.3 发布前强制审核门禁
