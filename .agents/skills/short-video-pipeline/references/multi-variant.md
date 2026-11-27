@@ -137,8 +137,9 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 4. **原片 BGM / 底噪体检、平台政策合规「哔」声屏蔽与广播级人声前置母带（防违规限流、叠音与削波）**：
    - 无论输入「已处理」还是「未处理」，均检查原片音轨是否自带背景音乐（BGM）或明显环境底噪（已处理口播片常混有原 BGM）；
    - 执行 `"$SVP_REA_VIDEO"` 拆解至 `raw/rea-out/`，提取完整口播逐字稿与精确时间戳（若原片自带 BGM 同步保留干净人声轨 `stems/vocals.wav`）；
-   - **平台政策合规敏感词全量扫描与「1000Hz 哔声 + 某X 字幕」脱敏（必做）**：确立母素材时，先对校准后逐字稿运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" scan-compliance --transcript <逐字稿.json或.srt> --out master-assets/clips/<切片名>-compliance-bleeps.json`，自动筛出 5 类国内三平台风控词（① 国内跨平台名如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信/公众号→某信/某公号`、`快手→某手`、`淘宝/拼多多/京东→某宝/某多多/某东` 等，正常保留亚马逊/独立站/领星/GPT/AI 等业务词；② 站外私域导流词；③ 广告法极限/保本暴利承诺词；④ 逃税/刷单/假货等灰黑产词；⑤ 诈骗/传销/死路/破产跑路等高危风控词）；同时核查原片及配套画面，凡出现友商平台水印/Logo/二维码须同步模糊遮挡或构图裁除；
-   - **广播级人声前置润色与精准哔声混音必做（`prepare-voice --bleeps`）**：对每个确认切片（或 `*-vocals.wav`）运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a --bleeps master-assets/clips/<切片名>-compliance-bleeps.json`，将命中的违规原声窗口精准静音并混入 `-18.0 dBFS` 标准 `1000Hz` 广播正弦波「哔」声（前后 `15ms` 柔化淡入淡出，**与源片等长零时间偏移**），记入 `master-assets/manifest.json` 的 `vocals_treated_track` 与 `compliance_bleeps`。下游 `00-master` 与 `01-v1..04-v4` 的 `<section id="voice-track">` 一律引用该 `*-voice-treated.m4a`（画面 `<video>` 设 `volume="0"`），且 5 片全部 `subtitles.html`、`scenes/*.html` 花字、定制封面与 `publish.json` 文案一律同步采用脱敏词（如 `某音`），最终在 `delivery/INDEX.md` 附敏感词处理明细！
+   - **平台政策合规敏感词全量扫描与「1000Hz 哔声 + 某X 字幕」脱敏（必做，按输入态精准卡位）**：
+     - **当输入为「已处理」（跳过步骤 E1 直通母素材）时**：在确立 `master-assets/clips/` 后立即对逐字稿运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" scan-compliance --transcript <逐字稿.json或.srt> --out master-assets/clips/<切片名>-compliance-bleeps.json` 筛出 5 类国内三平台风控词（① 国内跨平台名如 `抖音→某音`、`小红书→某红书`、`视频号→某频号`、`微信/公众号→某信/某公号`、`快手→某手`、`淘宝/拼多多/京东→某宝/某多多/某东` 等，正常保留亚马逊/独立站/领星/GPT/AI 等业务词；② 站外私域导流词；③ 广告法极限/保本暴利承诺词；④ 逃税/刷单/假货等灰黑产词；⑤ 诈骗/传销/死路/破产跑路等高危风控词），并对每个确认切片运行 `qc_video.py prepare-voice --in <源切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a --bleeps master-assets/clips/<切片名>-compliance-bleeps.json` 生成等长零偏移 `-18.0 dBFS` `1000Hz` 哔声润色母带（画面若含第三方平台水印/二维码同步打码或裁除）；
+     - **当输入为「未处理原片」（需进入步骤 E1 粗剪与合并）时**：本步仅做原片拆解与 BGM 分轨预检，**留待步骤 `E1.5` 用户确认粗剪并完成 `master-assets/clips/` 最终时间轴校准后，再统一对定稿切片运行 `scan-compliance` 与 `prepare-voice --bleeps`**，确保哔声窗口与最终母素材时间轴 100% 严丝合缝！下游 `00-master` 与 `01-v1..04-v4` 的 `<section id="voice-track">` 一律引用该 `*-voice-treated.m4a`（画面 `<video>` 设 `volume="0"`），5 片字幕、花字、封面与文案同步采用脱敏词并在 `delivery/INDEX.md` 附明细。
 5. **判定「已处理 / 未处理」（注意：跳过粗剪闸门 ≠ 跳过成片内 EDL 精剪与黄金冷开！）**：
    - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1 人工闸门：若源片 `>1440p` 或关键帧间隔 `>0.5s`，用显卡一次性转出 `1440p + -g 8` 快解母片放入 `master-assets/clips/`，否则按零重复拷贝原则归档原片切片、生成 `*-voice-treated.m4a` 并写 `manifest.json`。**关键红线：`master-assets/clips/` 保持完整不剪碎是为了统一时间码基准，但下游 `00-master` 与 `v1..v4` 各自制作时，仍必须在各自 `storyboard.json` 中用 `time_slices` 切净片头采访者搭话、推眼镜冷场与口头禅，并设计 `H1–H6` 黄金 3 秒冷开，严禁把前 7 秒冷场原封不动端进成片！**；
    - 用户明确说了「未处理 / 原片 / 先粗剪」，或输入位于工作区 `素材投递区/未处理原片/` 下且用户未声明已处理 → `gates.input_state_confirmed = true`，进入步骤 E1；
@@ -166,8 +167,8 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 将本轮用户意见、操作参数、核验帧路径与结论按轮次追加记录到 `rough-cut/preprocess.json` 的 `revisions` 数组，回传预览图/片段请用户再次确认，直至用户明确「通过」。
 5. **时间轴校准并正式确立「母素材（Master Assets）」**：
    - 只有获得用户明确「通过」指令后，才将最终确认的干净原片切片/合并片（若 `>1440p` 或 `GOP > 0.5s` 则统一以 `h264_nvenc -vf "scale=-2:1440" -preset p5 -cq 18 -g 8` 输出快解工作母片，及同步裁切对齐后的干净人声轨 `*-vocals.wav`，如有）放入 `master-assets/clips/`，用户配套素材规范化命名后放入 `master-assets/supplied/`；
-   - **时间轴重算铁律**：凡经过删句、重切或合并，**必须按最终 `master-assets/clips/` 的实际成片重新映射或重跑轻量 ASR 校准逐字稿时间戳**（严禁直接沿用原片旧时间戳导致下游字幕与花字错位）；
-   - 写入完整的 `master-assets/manifest.json`（记录 `source_topics`、确认切片与合并片路径、`aligned_transcript`、`has_original_bgm`、`vocals_track`、`preprocess_applied` 与 `supplied_assets` 原名→合规名映射），同步更新 `run.json`（`gates.rough_cut_approved = true`、`gates.pending_gate = null`）。
+   - **时间轴重算与合规消音人声母带生成铁律**：凡经过删句、重切或合并，**必须先按最终 `master-assets/clips/` 的实际成片重新映射或重跑轻量 ASR 校准逐字稿时间戳**（严禁直接沿用原片旧时间戳导致下游字幕与哔声错位），随即对校准后的逐字稿与定稿切片运行 `qc_video.py scan-compliance --transcript ... --out master-assets/clips/<切片名>-compliance-bleeps.json` 及 `qc_video.py prepare-voice --in <切片或vocals.wav> --out master-assets/clips/<切片名>-voice-treated.m4a --bleeps master-assets/clips/<切片名>-compliance-bleeps.json`；
+   - 写入完整的 `master-assets/manifest.json`（记录 `source_topics`、确认切片与合并片路径、`aligned_transcript`、`has_original_bgm`、`vocals_track`、`vocals_treated_track`、`compliance_bleeps`、`preprocess_applied` 与 `supplied_assets` 原名→合规名映射），同步更新 `run.json`（`gates.rough_cut_approved = true`、`gates.pending_gate = null`）。
 
 ### 步骤 E2：基于母素材制作完整母片（`master/`）
 
@@ -396,6 +397,39 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
       "bgm_mood": "电子脉冲自动闪避铺底床 + 金句前Silence Drop",
       "supplement_assets_plan": ["真实搜索界面截图", "实拍购物场景运动视频B-roll", "归一化Whoosh+SubHit音效"],
       "cover_spec": "track_b_C2",
+      "brand_slogan_mode": "chenyi_default"
+    },
+    {
+      "id": "v2",
+      "prefix": "02-v2",
+      "account_group": "G2",
+      "account_ip_name": "辰奕AI经营实战",
+      "editing_style": "S03",
+      "style_slug": "白板推演算账",
+      "color_lut": "v2-warm-paper.cube",
+      "layout_paradigm": "warm_paper_canvas_pan_zoom_L5",
+      "speaker_mode": "intro_outro_and_corner_badge",
+      "subtitle_system": "SUB3_top1458_no_pill",
+      "cover_topology": "C3_economist_warm_paper_frame",
+      "color_palette": {
+        "bg": "#F2EFE9",
+        "bg_2": "#E6E1D6",
+        "text": "#111C24",
+        "accent": "#1B8A6B",
+        "warn": "#D96B27"
+      },
+      "source_clips": ["runs/20261124-1400-意图电商专题/master-assets/clips/clip-01-买家问AI.mp4"],
+      "time_slices": [[19.4, 48.6]],
+      "silence_drops": [[38.0, 38.7]],
+      "cold_open": "H2 直接在暖棉纸画布抛出传统关键词投放转化率下滑账本对比，引入方法模型推演",
+      "angle": "对位「辰奕AI经营实战」：用全画幅研究画布拆解意图匹配三要素与Listing改写SOP",
+      "opening_hook": "转化成本反差算账切入企业级AI经营推演",
+      "ending_sentence": "把使用场景、人群痛点和追问答案提前埋进结构化描述，AI才会主动推荐你。",
+      "outro_design": "O1暖纸墨字核心公式定格：停留可读1.8s并留0.8s木质拨弦尾韵淡出",
+      "visual_style": "C6虚拟摄像机平移推拉暖纸画布 + DV2/DV3无框数据挤压与趋势面 + 纸笔拟音",
+      "bgm_mood": "原声木质拨弦自动闪避铺底床 + 马克笔划词拟音",
+      "supplement_assets_plan": ["电商运营团队白板复盘稳像B-roll", "商品详情页真实截图", "纸张翻页与马克笔音效"],
+      "cover_spec": "track_b_C3",
       "brand_slogan_mode": "chenyi_default"
     },
     {

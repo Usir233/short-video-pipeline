@@ -258,7 +258,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 ## 步骤 5：剪辑和渲染
 
-**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`）、整篇读 `openfilm skill film`（兼容 `edit`），并完整对照 [references/editing-styles.md](references/editing-styles.md)（十大风格与 32 项剪辑刀法）与 [references/editing-vfx.md](references/editing-vfx.md)（Boxless 四定律、10 轨标准栈、42 项特效原语、零胶囊字幕与两段式混音）** 建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
+**先读 `node_modules/openfilm/SYSTEM_PROMPT.md`（或无参运行 `openfilm`）、整篇读 `openfilm skill film`（兼容 `edit`），并完整对照 [references/editing-styles.md](references/editing-styles.md)（十大风格与 34 项剪辑刀法）与 [references/editing-vfx.md](references/editing-vfx.md)（Boxless 四定律、10 轨标准栈、42 项特效原语、零胶囊字幕与两段式混音）** 建项目、写 `film.html` 和页面、用 `openfilm look` 看画面。
 
 本工作区的约定：
 

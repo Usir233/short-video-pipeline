@@ -110,6 +110,14 @@ COINED_AMBIGUOUS_PHRASE_RE = re.compile(r"外遇行业|内忧外遇")
 
 SHIPINHAO_FORBIDDEN_RE = re.compile(r"[,，.。!！、—\-()（）\[\]【】/\\|\s\r\n]")
 
+SPEAKER_VID_NAME_RE = re.compile(
+    r"(?:^clip|speaker|talking|master-clip|^00-|^01-|^02-|^03-|^04-)", re.IGNORECASE
+)
+
+MASKED_SENSITIVE_TOKEN_RE = re.compile(
+    r"某(?:音|红书|频号|公号|信|手|站|宝|猫|多多|东|鱼|博|乎)|躺\*|稳\*不赔|短期暴\*|\*税不合规|违规补\*|侵\*品"
+)
+
 STYLE_ASL_THRESHOLDS = {
     "master": 7.5,  # G0 跨境AI十亿增长局 (S01 商业旗舰纪实)
     "v1": 3.5,      # G1 时奕聊AI经营 (S02 网感痛点快剪)
@@ -2620,30 +2628,75 @@ def audit_film_dir(
         def merged_clip_css(c: dict[str, Any]) -> str:
             return ";".join([css_class_rules.get(cls, "") for cls in c.get("classes", [])] + [c.get("style", "")])
 
-        # 0. Check voice-track conditioning (must use prepare-voice treated master, not raw dry voice)
+        # 0. Check voice-track conditioning & 1000Hz compliance bleep verification
         vt_m = re.search(
             r'<section[^>]*id=["\']voice-track["\'][^>]*>(.*?)</section>',
             html_txt,
             flags=re.IGNORECASE | re.DOTALL,
         )
+        voice_track_files: list[Path] = []
+        voice_bleeps_by_file: dict[str, int] = {}
         if vt_m:
             unconditioned_vo: list[str] = []
             for vc in parse_audio_tags_in_section(vt_m.group(1)):
                 vf = film_dir / vc["base_src"]
                 if not vf.is_file():
                     continue
+                voice_track_files.append(vf)
                 v_probe = ffprobe_json(vf)
                 v_comment = str(v_probe.get("format", {}).get("tags", {}).get("comment", "") or "")
-                is_treated = (
-                    v_comment.startswith("svp_voice_treated")
-                    or ("treated" in vf.name.lower())
-                )
+                is_treated = v_comment.startswith("svp_voice_treated")
                 if not is_treated:
                     unconditioned_vo.append(vf.name)
+                else:
+                    m_bl = re.search(r"bleeps=(\d+)", v_comment)
+                    voice_bleeps_by_file[vf.name] = int(m_bl.group(1)) if m_bl else 0
             if unconditioned_vo:
                 hard_failures.append(
-                    f"人声未做前置母带润色：`voice-track` 直接引用原始干声({', '.join(dict.fromkeys(unconditioned_vo))})，须先运行 `qc_video.py prepare-voice` 生成 3:1 压缩润色母带防限幅失真"
+                    f"人声未做前置母带润色：`voice-track` 未通过 `qc_video.py prepare-voice` 生成带 `svp_voice_treated` 元数据的润色母带({', '.join(dict.fromkeys(unconditioned_vo))})，严禁直接挂原始干声或仅改文件名绕过检查"
                 )
+
+            # Cross-check compliance-bleeps.json & masked subtitle tokens against actual audio bleep count
+            total_applied_bleeps = sum(voice_bleeps_by_file.values())
+            expected_bleep_hits = 0
+            cand_bleep_dirs = [
+                film_dir.parent / "materials",
+                film_dir.parent.parent / "master-assets" / "clips",
+                film_dir.parent.parent.parent / "master-assets" / "clips",
+            ]
+            vo_stems = [
+                re.sub(r"-voice-treated$|-treated$", "", vf.stem, flags=re.I)
+                for vf in voice_track_files
+            ]
+            for bdir in cand_bleep_dirs:
+                if not bdir.is_dir():
+                    continue
+                for bf in sorted(bdir.glob("*compliance*bleep*.json")):
+                    if vo_stems and bf.name != "compliance-bleeps.json":
+                        if not any(st and bf.name.startswith(st) for st in vo_stems):
+                            continue
+                    try:
+                        bj = json.loads(bf.read_text(encoding="utf-8"))
+                        hc = int(bj.get("hit_count") or len(bj.get("bleeps") or []))
+                        expected_bleep_hits = max(expected_bleep_hits, hc)
+                    except Exception:
+                        pass
+            details["voice_bleeps_applied"] = total_applied_bleeps
+            details["compliance_bleeps_expected"] = expected_bleep_hits
+            if voice_track_files and expected_bleep_hits > 0 and total_applied_bleeps == 0:
+                hard_failures.append(
+                    f"人声敏感词漏做 1000Hz 哔声消音：`compliance-bleeps.json` 检出 {expected_bleep_hits} 处平台违规词，但 `voice-track` 音轨元数据 `bleeps=0`，必须运行 `qc_video.py prepare-voice --bleeps <compliance-bleeps.json>` 重新生成消音人声母带"
+                )
+            elif voice_track_files and total_applied_bleeps == 0 and parsed_cues_sync:
+                masked_in_subs = [
+                    m.group(0)
+                    for _, _, ct_p in parsed_cues_sync
+                    for m in MASKED_SENSITIVE_TOKEN_RE.finditer(ct_p)
+                ]
+                if masked_in_subs:
+                    hard_failures.append(
+                        f"人声敏感词疑似漏做 1000Hz 哔声消音：字幕已出现脱敏词({', '.join(dict.fromkeys(masked_in_subs[:4]))})，但 `voice-track` 音轨元数据 `bleeps=0`，必须传入 `--bleeps` 对原声同步做 1000Hz 哔声屏蔽"
+                    )
 
         # 1. Inspect ALL BGM sections (closing id="bgm-tail" loophole)
         all_bgm_clips: list[dict[str, Any]] = []
@@ -2850,9 +2903,7 @@ def audit_film_dir(
             vid_freq_early[bn] = vid_freq_early.get(bn, 0) + 1
         if vid_freq_early:
             dom_bn = max(vid_freq_early, key=vid_freq_early.get)
-            if vid_freq_early[dom_bn] >= 2 or re.search(
-                r"(^clip|speaker|talking|master-clip|01-|02-|03-)", dom_bn
-            ):
+            if vid_freq_early[dom_bn] >= 2 or SPEAKER_VID_NAME_RE.search(dom_bn):
                 speaker_vids_early.add(dom_bn)
         for c in pip_clips + cutout_clips:
             if c["tag"] == "video":
@@ -2862,9 +2913,7 @@ def audit_film_dir(
             if c["tag"] != "video":
                 return False
             bn = Path(c["base_src"]).name.lower()
-            return bn in speaker_vids_early or bool(
-                re.search(r"(^clip|speaker|talking|master-clip)", bn)
-            )
+            return bn in speaker_vids_early or bool(SPEAKER_VID_NAME_RE.search(bn))
 
         # 3b. Optical Color Grading (--of-lut) check on speaker <video> clips
         all_speaker_clips = [c for c in (main_clips + pip_clips + cutout_clips) if is_speaker_vid_clip(c)]
@@ -3357,7 +3406,7 @@ def audit_film_dir(
             if vc["tag"] != "video":
                 continue
             bn = Path(vc["base_src"]).name.lower()
-            if bn in speaker_vids_early or re.search(r"(^clip|speaker|talking|master-clip)", bn):
+            if bn in speaker_vids_early or SPEAKER_VID_NAME_RE.search(bn):
                 continue
             broll_video_count += 1
             visual_asset_counts[bn] = visual_asset_counts.get(bn, 0) + 1
@@ -3909,6 +3958,10 @@ def audit_covers(
             hard_failures.append(
                 f"封面字幕未水平居中 `{hf.name}`：未检测到 `text-align: center`，封面字幕必须置于人物头顶上方且水平居中"
             )
+        if re.search(r"justify-content\s*:\s*(?:flex-)?end", htxt, re.I):
+            hard_failures.append(
+                f"封面字幕 Flex 沉底违规 `{hf.name}`：检测到 `justify-content: flex-end`，封面字幕必须置于人物头顶上方水平居中"
+            )
         for blk_m in re.finditer(r"([.#A-Za-z0-9_,\s-]+)\{([^}]*)\}", htxt):
             sel, css_b = blk_m.group(1), blk_m.group(2)
             bfs = parse_css_px(css_b, "font-size")
@@ -3920,10 +3973,20 @@ def audit_covers(
                     hard_failures.append(
                         f"封面字幕沉底违规 `{hf.name}`(`{sel.strip()}`)：检测到 `bottom` 定位，封面字幕必须添加到人物头顶上方水平居中"
                     )
-                btop = parse_css_px(css_b, "top")
-                if btop is not None and btop > max_overhead_top:
+                for prop_n in ("top", "margin-top", "padding-top"):
+                    btop = parse_css_px(css_b, prop_n)
+                    if btop is not None and btop > max_overhead_top:
+                        hard_failures.append(
+                            f"封面字幕位置过低 `{hf.name}`(`{sel.strip()}`)：`{prop_n}={btop:.0f}px` 落在中下半屏(> {max_overhead_top:.0f}px)，必须置于人物头顶上方水平居中"
+                        )
+                ty_m = re.search(
+                    r"translate(?:Y\(\s*(\d+(?:\.\d+)?)px|(?:3d)?\([^,)]+,\s*(\d+(?:\.\d+)?)px)",
+                    css_b,
+                    re.I,
+                )
+                if ty_m and float(ty_m.group(1) or ty_m.group(2)) > max_overhead_top:
                     hard_failures.append(
-                        f"封面字幕位置过低 `{hf.name}`(`{sel.strip()}`)：`top={btop:.0f}px` 落在中下半屏(> {max_overhead_top:.0f}px)，必须置于人物头顶上方水平居中"
+                        f"封面字幕 translateY 下移违规 `{hf.name}`(`{sel.strip()}`)：大字标题被下推至中下半屏，必须置于人物头顶上方水平居中"
                     )
         for inl_m in re.finditer(r'style=["\']([^"\']*)["\']', htxt, re.I):
             inl_css = inl_m.group(1)
@@ -3933,10 +3996,20 @@ def audit_covers(
                     hard_failures.append(
                         f"封面字幕行内样式沉底违规 `{hf.name}`：大字标题使用了 `bottom` 定位，必须置于人物头顶上方水平居中"
                     )
-                itop = parse_css_px(inl_css, "top")
-                if itop is not None and itop > max_overhead_top:
+                for prop_n in ("top", "margin-top", "padding-top"):
+                    itop = parse_css_px(inl_css, prop_n)
+                    if itop is not None and itop > max_overhead_top:
+                        hard_failures.append(
+                            f"封面字幕行内样式位置过低 `{hf.name}`：`{prop_n}={itop:.0f}px` 落在中下半屏(> {max_overhead_top:.0f}px)，必须置于人物头顶上方水平居中"
+                        )
+                ity_m = re.search(
+                    r"translate(?:Y\(\s*(\d+(?:\.\d+)?)px|(?:3d)?\([^,)]+,\s*(\d+(?:\.\d+)?)px)",
+                    inl_css,
+                    re.I,
+                )
+                if ity_m and float(ity_m.group(1) or ity_m.group(2)) > max_overhead_top:
                     hard_failures.append(
-                        f"封面字幕行内样式位置过低 `{hf.name}`：`top={itop:.0f}px` 落在中下半屏(> {max_overhead_top:.0f}px)，必须置于人物头顶上方水平居中"
+                        f"封面字幕行内 translateY 下移违规 `{hf.name}`：大字标题被下推至中下半屏，必须置于人物头顶上方水平居中"
                     )
 
         if not is_track_a_yitu:
@@ -4056,17 +4129,18 @@ def audit_publish_json(
         else:
             cover_title_str = str(cover_title or "")
         topics = str(cfg.get("topics", "") or "")
+        topics_disp = str(cfg.get("topics_display", "") or "")
 
         all_copy = f"{title} {short_title} {cover_title_str} {desc}"
         for wrong_ip in other_ips:
-            if wrong_ip in all_copy or wrong_ip in topics:
+            if wrong_ip in all_copy or wrong_ip in topics or wrong_ip in topics_disp:
                 hard_failures.append(
-                    f"publish.json [{plat}] 账号 IP 名串台违规：槽位 `{style_slot}`({expected_meta['ip_name']}) 文案误出现「{wrong_ip}」"
+                    f"publish.json [{plat}] 账号 IP 名串台违规：槽位 `{style_slot}`({expected_meta['ip_name']}) 文案/话题误出现「{wrong_ip}」"
                 )
-        pol_copy_hits = find_policy_sensitive_hits(all_copy)
+        pol_copy_hits = find_policy_sensitive_hits(f"{all_copy} {topics} {topics_disp}")
         if pol_copy_hits:
             hard_failures.append(
-                f"publish.json [{plat}] 文案含平台违规/跨站导流敏感词: {', '.join(dict.fromkeys(x['raw_word'] for x in pol_copy_hits))}"
+                f"publish.json [{plat}] 文案或话题标签含平台违规/跨站敏感词: {', '.join(dict.fromkeys(x['raw_word'] for x in pol_copy_hits))}"
             )
         hits: list[str] = []
         for pat in DESC_SECONDS_PATTERNS:
@@ -4278,8 +4352,12 @@ def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
         except Exception:
             pass
 
+    canon_slot = detect_style_slot(slot_dir / f"{slot_name}.mp4", film_dir, None)
     fp: dict[str, Any] = {
         "slot": slot_name,
+        "canonical_slot": canon_slot,
+        "account_group": SLOT_ACCOUNT_MAP[canon_slot]["group_id"] if canon_slot in SLOT_ACCOUNT_MAP else None,
+        "expected_ip_name": SLOT_ACCOUNT_MAP[canon_slot]["ip_name"] if canon_slot in SLOT_ACCOUNT_MAP else None,
         "dir": rel_path(slot_dir),
         "duration_sec": round(dur, 2),
         "subtitle_has_pill_box": False,
@@ -4360,7 +4438,7 @@ def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
                 if c["tag"] == "video"
                 and (
                     Path(c["base_src"]).name.lower() in speaker_vids
-                    or re.search(r"(^clip|speaker|talking|master-clip)", Path(c["base_src"]).name, re.I)
+                    or SPEAKER_VID_NAME_RE.search(Path(c["base_src"]).name)
                 )
             )
             fp["fullscreen_speaker_ratio"] = round(min(1.0, fs_sec / dur), 3)
@@ -4368,9 +4446,7 @@ def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
             for mc in main_c:
                 if mc["tag"] == "video":
                     bn = Path(mc["base_src"]).name.lower()
-                    if bn not in speaker_vids and not re.search(
-                        r"(^clip|speaker|talking|master-clip)", bn
-                    ):
+                    if bn not in speaker_vids and not SPEAKER_VID_NAME_RE.search(bn):
                         vf = film_dir / mc["base_src"]
                         # Sample standardized file offset (0.5s) AND clip midpoint so trimmed clones always match
                         hashes: list[str] = []
@@ -4417,7 +4493,7 @@ def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
             for mm in asset_refs:
                 raw_mm = mm.split("#", 1)[0]
                 bn = Path(raw_mm).name.lower()
-                if bn == "logo.png" or bn in speaker_vids or re.search(r"(^clip|speaker|talking|master-clip)", bn):
+                if bn == "logo.png" or bn in speaker_vids or SPEAKER_VID_NAME_RE.search(bn):
                     continue
                 ip = (sf.parent / raw_mm).resolve()
                 if not ip.is_file():
@@ -4449,10 +4525,13 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
     warnings: list[str] = []
     fingerprints = [extract_slot_fingerprint(name, sdir) for name, sdir in slot_dirs]
 
-    # 0. Fixed 5-slot (G0-G4: 00-master + v1..v4) completeness check
-    if len(fingerprints) != 5:
+    # 0. Fixed 5-slot (G0-G4: master, v1, v2, v3, v4) exact completeness check
+    required_slots = {"master", "v1", "v2", "v3", "v4"}
+    present_canon = [f["canonical_slot"] for f in fingerprints]
+    missing_canon = sorted(required_slots - set(present_canon))
+    if len(fingerprints) != 5 or missing_canon:
         hard_failures.append(
-            f"入口 E 五号组矩阵数量违规：当前检测到 {len(fingerprints)} 片({[f['slot'] for f in fingerprints]})，必须强制固定产出 1 母片(G0) + 4 子片(G1-G4) 共 5 条成片"
+            f"入口 E 五号组矩阵槽位不完整或含多余目录：当前检测到 {len(fingerprints)} 片({[f['slot'] for f in fingerprints]}，缺失槽位={missing_canon})，必须严格对应 00-master(G0) + v1..v4(G1-G4) 共 5 个独立槽位"
         )
 
     # 1. Zero-pill & 5-slot vertical coordinate spread check across slots
@@ -4532,14 +4611,103 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
         )
 
     # 5. Pacing & visual-mode separation check
-    v1_fp = next((f for f in fingerprints if f["slot"].startswith("v1")), None)
-    v2_fp = next((f for f in fingerprints if f["slot"].startswith("v2")), None)
+    v1_fp = next((f for f in fingerprints if f["canonical_slot"] == "v1"), None)
+    v2_fp = next((f for f in fingerprints if f["canonical_slot"] == "v2"), None)
+    v3_fp = next((f for f in fingerprints if f["canonical_slot"] == "v3"), None)
     if v1_fp and v1_fp["asl_sec"] and v1_fp["asl_sec"] > 3.5:
-        hard_failures.append(f"v1 剪辑节奏未拉开差距：ASL={v1_fp['asl_sec']}s > 3.5s 快剪红线")
+        hard_failures.append(f"v1(G1时奕聊AI经营) 剪辑节奏未拉开差距：ASL={v1_fp['asl_sec']}s > 3.5s 快剪红线")
     if v2_fp and v2_fp["fullscreen_speaker_ratio"] > 0.35:
         warnings.append(
-            f"v2 全屏口播占比偏高({v2_fp['fullscreen_speaker_ratio']:.0%} > 35%)，建议释放 75%+ 给全画幅白板"
+            f"v2(G2辰奕AI经营实战) 全屏口播占比偏高({v2_fp['fullscreen_speaker_ratio']:.0%} > 35%)，建议释放 75%+ 给全画幅白板"
         )
+    if v3_fp and v3_fp["asl_sec"] and v3_fp["asl_sec"] > 5.5:
+        warnings.append(
+            f"v3(G3老郑AI经营实战·双域交锋流) 镜头节奏偏缓(ASL={v3_fp['asl_sec']}s > 5.5s)"
+        )
+
+    # 6. Cross-slot covers, publish.json uniqueness/IP binding & delivery/ sync verification
+    covers_enabled = True
+    target_platforms = ["douyin", "xhs", "shipinhao"]
+    run_json_p = run_dir / "run.json"
+    if run_json_p.is_file():
+        try:
+            rj = json.loads(run_json_p.read_text(encoding="utf-8"))
+            if rj.get("covers_enabled") is False:
+                covers_enabled = False
+            if isinstance(rj.get("target_platforms"), list) and rj["target_platforms"]:
+                target_platforms = [str(x) for x in rj["target_platforms"]]
+        except Exception:
+            pass
+
+    any_covers_present = any((sdir / "covers").is_dir() and list((sdir / "covers").glob("*.png")) for _, sdir in slot_dirs)
+    cover_dhashes_by_plat: dict[str, list[tuple[str, int]]] = {}
+    seen_titles_by_plat: dict[str, dict[str, str]] = {}
+
+    for (sname, sdir), fp in zip(slot_dirs, fingerprints):
+        cslot = fp["canonical_slot"]
+        cdir = sdir / "covers"
+        if covers_enabled and any_covers_present:
+            if not cdir.is_dir() or not list(cdir.glob("*.png")):
+                hard_failures.append(f"入口 E 封面缺失：槽位 `{sname}` 未生成 `covers/*.png`")
+            else:
+                audit_covers(cdir, sdir, hard_failures, warnings, style_slot=cslot)
+                for plat in target_platforms:
+                    matches = sorted(cdir.glob(f"*{plat}.png"))
+                    if not matches:
+                        hard_failures.append(f"入口 E 封面缺失：槽位 `{sname}` 缺少 `*{plat}.png`")
+                    else:
+                        dh = compute_visual_dhash(matches[0])
+                        if dh is not None:
+                            cover_dhashes_by_plat.setdefault(plat, []).append((sname, dh))
+
+        pub_p = sdir / "publish" / "publish.json"
+        if pub_p.is_file():
+            try:
+                audit_publish_json(pub_p, hard_failures, warnings, style_slot=cslot)
+                pdata = json.loads(pub_p.read_text(encoding="utf-8"))
+                for plat, pcfg in (pdata.get("platforms") or {}).items():
+                    t_str = re.sub(r"\s+", "", str(pcfg.get("title") or "")).lower()
+                    if len(t_str) >= 4:
+                        prev_slot = seen_titles_by_plat.setdefault(plat, {}).get(t_str)
+                        if prev_slot and prev_slot != sname:
+                            hard_failures.append(
+                                f"跨 5 片文案标题克隆 [{plat}]：`{prev_slot}` 与 `{sname}` 重复使用完全相同的标题「{pcfg.get('title')}」"
+                            )
+                        else:
+                            seen_titles_by_plat[plat][t_str] = sname
+            except Exception as exc:
+                hard_failures.append(f"publish.json 读取/校验失败 `{rel_path(pub_p)}`: {exc}")
+
+    for plat, sh_list in cover_dhashes_by_plat.items():
+        for i in range(len(sh_list)):
+            for j in range(i + 1, len(sh_list)):
+                s1, h1 = sh_list[i]
+                s2, h2 = sh_list[j]
+                cdist = hamming_dist(h1, h2)
+                if cdist <= 6:
+                    hard_failures.append(
+                        f"跨片封面撞图克隆 [{plat}]：`{s1}` 与 `{s2}` 封面视觉指纹高度雷同(dHash距离={cdist} <= 6)，违反五槽异构拓扑与 15 张封面神态零重复铁律"
+                    )
+
+    deliv_dir = run_dir / "delivery"
+    if deliv_dir.is_dir():
+        if not (deliv_dir / "INDEX.md").is_file():
+            hard_failures.append("delivery/ 交付包缺少总索引 `delivery/INDEX.md`")
+        src_size_by_name: dict[str, int] = {}
+        for _, sdir in slot_dirs:
+            for mp4_f in (sdir / "output").glob("*.mp4") if (sdir / "output").is_dir() else []:
+                src_size_by_name[mp4_f.name] = mp4_f.stat().st_size
+            for png_f in (sdir / "covers").glob("*.png") if (sdir / "covers").is_dir() else []:
+                src_size_by_name[png_f.name] = png_f.stat().st_size
+        for dsub in sorted(deliv_dir.iterdir()):
+            if not dsub.is_dir():
+                continue
+            for df in sorted(dsub.iterdir()):
+                if df.is_file() and df.name in src_size_by_name:
+                    if df.stat().st_size != src_size_by_name[df.name] or df.stat().st_size == 0:
+                        hard_failures.append(
+                            f"delivery/ 陈旧副本不一致：`{rel_path(df)}`({df.stat().st_size}B) 与源目录产物({src_size_by_name[df.name]}B)不一致，返工后必须整包重建 delivery/"
+                        )
 
     report = {
         "run_dir": rel_path(run_dir),
