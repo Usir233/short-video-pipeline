@@ -3215,6 +3215,52 @@ def audit_film_dir(
             reused_desc = ", ".join(f"{k}({v}次)" for k, v in sorted(reused_assets.items()))
             hard_failures.append(f"违反单支视频视觉素材仅用1次红线: {reused_desc}")
 
+        # Verify every supplemental visual asset has passed API/external 6D production-fit sign-off in credits.json
+        credits_path = film_dir / "assets" / "credits.json"
+        credits_by_bn: dict[str, dict[str, Any]] = {}
+        if credits_path.is_file():
+            try:
+                raw_cred = json.loads(credits_path.read_text(encoding="utf-8"))
+                cred_list = (
+                    raw_cred
+                    if isinstance(raw_cred, list)
+                    else (raw_cred.get("items") if isinstance(raw_cred, dict) else [])
+                )
+                for entry in cred_list or []:
+                    if isinstance(entry, dict) and entry.get("file"):
+                        credits_by_bn[Path(str(entry["file"])).name.lower()] = entry
+            except Exception:
+                pass
+
+        lazy_fit_re = re.compile(
+            r"^(?:ok|pass|yes|good|fit|matched|verified|符合|符合要求|合格|通过|没问题|可以|合适|匹配|测试|默认|自动下载)[\s!！.。]*$",
+            flags=re.IGNORECASE,
+        )
+        unverified_broll: list[str] = []
+        for bn in sorted(supplemental_files.keys()):
+            c_ent = credits_by_bn.get(bn)
+            if not c_ent:
+                unverified_broll.append(f"{bn}(未登记 credits.json)")
+                continue
+            shot_v = str(c_ent.get("shot_id") or "").strip()
+            fit_ok = c_ent.get("fit_verified") is True
+            reason_v = str(c_ent.get("fit_reason") or "").strip()
+            net_r = len(re.sub(r"\s+", "", reason_v))
+            if not fit_ok or not shot_v or net_r < 12 or lazy_fit_re.match(reason_v):
+                unverified_broll.append(f"{bn}(缺 fit_verified/shot_id 或具体 fit_reason>=12字)")
+
+        details["asset_fit_signoff"] = {
+            "supplemental_count": len(supplemental_files),
+            "unverified": unverified_broll,
+            "passed": len(unverified_broll) == 0,
+        }
+        if unverified_broll:
+            hard_failures.append(
+                f"API/外部素材未经制作要求核验签收：{', '.join(unverified_broll[:5])} —— 严禁 API 搜到随便拿一个直入成片！"
+                "必须先经 `fetch_asset.py inspect-candidates` 生成候选检视拼图亲自看图核验六维要求（台词语义咬合/地域零穿帮/竖屏构图避让/影调统一/稳像清晰），"
+                "再用 `fetch_asset.py register --shot <镜号> --fit-reason '<具体实看核验结论>'` 签收入 `film/assets/credits.json`"
+            )
+
         # Run B-roll video YAVG/scdet/stability/double-motion & 64-bit dHash checks on supplemental_files
         broll_qc: list[dict[str, Any]] = []
         dhash_map: list[tuple[str, int]] = []

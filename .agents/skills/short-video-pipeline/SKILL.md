@@ -224,7 +224,10 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 
 > **前置动作**：OpenFilm 执行 `openfilm get --take` 前若要求目录已是项目（否则报 `is not in a project`），先在运行目录 `film/` 里放一个最小骨架 `film.html`（声明 `1080×1920` viewport），再调用 `openfilm get --take`，全程带 `OPENFILM_NO_BROWSER=1`。具体命令写法以 `node_modules/openfilm/manual/` 为准。
 
-按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径：
+按每镜的内容类型分流取素材，选最匹配的通道，不要硬套单一路径。
+
+> **API 与外部素材「先候选暂存 → 六维制作要求核验 → 签收入库」硬铁律（严禁盲拿第 1 条充数！）**：
+> 凡通过 API（`openfilm get *-search` 或 `fetch_asset.py stock / news-page / video-clip`）查找的视觉或音频素材，**严禁只看英文标题/标签随便抓第 1 条直接塞进成片**！必须执行三步准入：① 先按具象动作词拉取 `2–4` 个候选进 `materials/` 并生成 `candidate-sheet-*.jpg` 4 帧检视拼图（若用 `openfilm get --take` 拉入 `film/assets/`，必须立即跑 `fetch_asset.py inspect-candidates` 补出检视拼图；音频必跑 `qc_video.py probe-audio`）；② **亲自看图/测音逐项核对六维制作要求**（台词具体事实咬合禁万能水片、地域文化零穿帮零水印、竖屏主体避开底部字幕禁盲裁、影调色温契合本片 `S01–S10` 风格与 LUT、清晰稳像零抖动、音频配器情绪匹配——**不达标立即从 `film/assets/` 删除淘汰并重搜，绝不将就**）；③ 仅对核验通过的素材运行 `fetch_asset.py register --shot <镜号> --fit-reason "<≥12字具体实看核验结论>"` 签收入 `film/assets/credits.json`（未经签收的补充素材会被 `qc_video.py audit-render` 直接硬阻断）。
 
 - **A. 人声前置母带、音乐、归一化音效、已有自存素材**：
   - **口播人声前置母带（有人声必做）**：凡包含真人原片口播或分离干声，先运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" prepare-voice --in <源视频或vocals.wav> --out <film/assets/voice-treated.m4a>` 生成**等长零偏移**广播级压缩润色人声轨（把 `21 dB+` 原生峰均比压实至 `11–13 dB`，从根源杜绝渲染时撞死 `-14 LUFS` 砖墙限幅器）；
@@ -233,7 +236,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - **C. 科技巨头发布新闻 / 产品报道 / 真实产品界面画面**：先用 `fetch_trends.py --mode search` 或官方 RSS 定位一手官方新闻稿/博客链接，再调用 `scripts/fetch_asset.py` 抓取落盘：
   - `news-page`：用工作区 Playwright 抽取正文事实、下载官方高清配图、截 1080px 干净官网/真实软件 UI 首屏（供 `PF6` 3D 透视视窗使用，严禁用纯 CSS 假画山寨 App UI）；
   - `video-search` / `video-clip`：用工作区已有 `yt-dlp` 搜官方发布会/Demo 并按起止秒精准截取 ≤6 秒短片段。
-- **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **优先补充 2–4 段 2–5 秒三脚架/云台稳像真实运动视频（`.mp4`）**：本机已接入免费 **Pixabay**，优先跑 `openfilm get video-search --prompt "..." --orientation portrait` 或 `fetch_asset.py stock --kind video`（自动读取本地 `.local/openfilm/providers.json` 优先排 `9:16` 竖屏并剔除 `timelapse/hyperlapse` 快放震荡片，未配时才降级公开库）。**每段 B-roll 入库前必过五项硬检**：① 首/中/尾帧亮度 `YAVG ≥ 18`（裁净片头未曝光黑场）；② 选用区间内无未切分内部硬切（`scdet < 16`）；③ **防抖稳像硬检（舞台折算高频急动度 `hf_jerk ≤ 2.40px` 且往复反向率 `≤ 2.50/s`，严禁天桥/人行道快放延时、手持走拍晃动或颠簸船拍；轻微微晃 `1.25 < hf_jerk ≤ 2.40px` 先跑 `qc_video.py stabilize-broll` 二次光学稳像，仍超标则直接淘汰换片）**；④ 城市地标/货币/文字与口播语境一致且零内嵌硬字幕/台标；⑤ 单片内及入口 E 跨 4 片视觉指纹 `64-bit dHash` 汉明距离 `> 10`（严禁同一素材改名克隆），且静图禁止将 `9:16` 竖图硬塞入 `>2.2:1` 扁横框裁成细条。
+- **D. 通用实拍动态 B-roll / 氛围空镜 / 科普插图**：先查 `openfilm get my-media` → **优先补充 2–4 段 2–5 秒三脚架/云台稳像真实运动视频（`.mp4`）**：本机已接入免费 **Pixabay**，用具象画面词先跑 `fetch_asset.py stock --kind video --download 3 --out materials`（自动排 `9:16` 竖屏优先、剔除 `timelapse/cartoon/3d render` 并输出 `candidate-sheet-*.jpg`）或 `openfilm get video-search --prompt "..." --orientation portrait`（拉取后补跑 `inspect-candidates`）。**每段候选入 `film/assets/` 前必须看图通过六维制作要求与五项技术硬检**：① 首/中/尾帧亮度 `YAVG ≥ 18`；② 无内部硬切 `scdet < 16`；③ 稳像达标（`hf_jerk ≤ 2.40px` 且往复率 `≤ 2.50/s`，轻微微晃跑 `qc_video.py stabilize-broll`，仍超标直接淘汰换片）；④ 主体动作精准印证当句台词、地域文化与全片影调一致且零内嵌硬字幕/台标；⑤ `64-bit dHash` 唯一且静图禁 `>2.2:1` 畸变盲裁，最后经 `fetch_asset.py register --shot <镜号> --fit-reason "<具体核验说明>"` 实名签收。
 - **E. 抽象概念 / 搜不到的专属场景**：用 agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生成服务——**静态生图入片必须做全画幅或杂志级出血构图并叠加与口播绑定的无框动态排印/光效前景**，禁止塞进小方盒或仅做 5% 慢推；生成视频一条片子最多 2 镜、每镜不超过 6 秒；生成失败或不可用时退回 B 类去框化代码动效。
 - **单支视频内视觉素材单次使用铁律**：同一支成片内，每一份视觉素材（B-roll `.jpg`/`.mp4`、贴纸、用户配套原图，品牌固定 Logo 与源口播视频除外）**严格仅允许使用 1 次（`count = 1`）**，严禁跨镜复用、同镜双层复用或入口 E 跨片改名复用。
 
@@ -250,7 +253,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 - 不把别人的二次创作短视频成片、搬运片段或带平台/图库水印的画面当素材。CreatorHub 采集和下载到的参考视频只进 `ref/`；通用图库素材只取无水印、允许免费使用的公开源。
 - 会另外收费的生成或付费素材（OpenFilm 标了 at a cost 的、外部付费服务）先告诉用户费用并等同意。agent 自带的搜索和生成能力不在此列。
 - 某一镜的搜索或生成失败、不可用时，改用代码画面，流程继续。
-- 每个素材的来源（原文/搜索链接与许可说明，或生成提示词）记进 `film/assets/credits.json`，`materials/` 里的原件和同步进 `.local/openfilm-user/saved/` 的复用件也记上对应关系（使用相对路径，不写死绝对路径）。
+- 每个素材的来源（原文/搜索链接与许可说明，或生成提示词）及**绑定镜号 `shot_id`、六维核验通过标记 `fit_verified: true` 与具体核验依据 `fit_reason`（`≥12` 字）**必须通过 `fetch_asset.py register` 记进 `film/assets/credits.json`，`materials/` 里的候选原件和同步进 `.local/openfilm-user/saved/` 的复用件也记上对应关系（使用相对路径，不写死绝对路径）。
 
 ## 步骤 5：剪辑和渲染
 
@@ -289,7 +292,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
 出片前自检，全部通过才能进入发布：
 
 - 每镜至少用 `openfilm look` 看一帧：文字不出框、不折超 2 行、不遮挡、没有错字、无媒体水印、无音频告警。
-- **自动化声画、去框化视觉、光学抠像、B-roll 五检与安全区红框门禁（必跑）**：执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、`prepare-voice` 前置润色已挂载且零砖墙削波过载、BGM 非蚊子哼且含闪避/留白床、无幽灵静音或风格违禁音效、开头 3s 零暖场口头禅、无句中假跳切或未遮切同机位蹦脸、B-roll 无暗黑片头 `YAVG<18`/无内部硬切 `scdet≥16`/无高频往复晃动 `hf_jerk>2.40px` 或双重运镜 `scale` 打架/无 `dHash` 克隆/无横竖硬塞畸变、出镜 `<video>` 已挂 `--of-lut`、`--of-cutout: 1` 已垫同源虚化视频底且 `width≥1080px`、无仪表盘套娃外框/伪进度条/空黑框等字/字幕复读横幅/`space-between` 漏子块塌陷、`speaker-pip` 纵向 `v1≤22%` 且 `v2≥72%` 未切嘴、字幕零 `.pill` 胶囊框且字号 `≥40px` 单屏无句中逗号、末尾 `0.35s` 无截断人声、无底卡掉入 `y≥1540px`）；**并亲自打开 `output/check/safezone-grid.png`、`output/check/safezone-tail.png`、`output/check/safezone-cuts.png`、`safezone-broll.png`（如有补充 B-roll）、`safezone-pip.png`（如有 PiP）与 `safezone-cutouts.png`（如有抠像/贴纸）目检**，逐项确认：四向安全区干净、B-roll 首中尾帧清晰稳像无黑场且地标语义吻合、`speaker-pip` 五官完整无杂墙、抠像双肩完整无绿边、切点无闭眼/双头/亮度暴跌穿帮、结尾收束与 BGM 淡出自然。
+- **自动化声画、去框化视觉、光学抠像、B-roll 五检、API 素材六维签收与安全区红框门禁（必跑）**：执行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" audit-render --video ../output/<成片>.mp4 --film-dir . --out-dir ../output/check`，确认 `qc-report.json` 零 `hard_failures`（校验 1080×1920、真峰值 `≤ -1.0 dBTP`、`prepare-voice` 前置润色已挂载且零砖墙削波过载、BGM 非蚊子哼且含闪避/留白床、无幽灵静音或风格违禁音效、开头 3s 零暖场口头禅、无句中假跳切或未遮切同机位蹦脸、**全部补充视觉素材已在 `credits.json` 完成 `shot_id` + `fit_verified=true` + 具体 `fit_reason` 制作要求核验签收**、B-roll 无暗黑片头 `YAVG<18`/无内部硬切 `scdet≥16`/无高频往复晃动 `hf_jerk>2.40px` 或双重运镜 `scale` 打架/无 `dHash` 克隆/无横竖硬塞畸变、出镜 `<video>` 已挂 `--of-lut`、`--of-cutout: 1` 已垫同源虚化视频底且 `width≥1080px`、无仪表盘套娃外框/伪进度条/空黑框等字/字幕复读横幅/`space-between` 漏子块塌陷、`speaker-pip` 纵向 `v1≤22%` 且 `v2≥72%` 未切嘴、字幕零 `.pill` 胶囊框且字号 `≥40px` 单屏无句中逗号、末尾 `0.35s` 无截断人声、无底卡掉入 `y≥1540px`）；**并亲自打开 `output/check/safezone-grid.png`、`output/check/safezone-tail.png`、`output/check/safezone-cuts.png`、`safezone-broll.png`（如有补充 B-roll）、`safezone-pip.png`（如有 PiP）与 `safezone-cutouts.png`（如有抠像/贴纸）目检**，逐项确认：四向安全区干净、B-roll 首中尾帧清晰稳像无黑场且与当句台词语义/影调精准吻合、`speaker-pip` 五官完整无杂墙、抠像双肩完整无绿边、切点无闭眼/双头/亮度暴跌穿帮、结尾收束与 BGM 淡出自然。
 - 渲染完成后对成片执行 `openfilm look --full` / `ffprobe`：1080×1920、时长与分镜一致、有音轨、无黑帧/闪屏。
 - 入口 C：对照 `ref/out/VIDEO.md`，结构和节奏对得上，且成片里没有原片的任何画面和声音。
 

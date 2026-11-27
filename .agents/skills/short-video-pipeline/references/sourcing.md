@@ -75,23 +75,41 @@ python3 .agents/skills/short-video-pipeline/scripts/fetch_trends.py --mode searc
 | **A. 音乐、音效、已有自存素材** | 1. OpenFilm 本地复用库 `my-media`<br>2. OpenFilm 自带 CC0 免费曲库/音效库（严肃商业/电影风 `S01/S03/S04/S05/S06/S07` 禁用彩色扁平卡通贴纸与 `ui-pop/bell` 轻浮音，入库后必跑 `qc_video.py normalize-sfx` 清洗 `<-50 LUFS` 坏件并归一化至 `-3 dBTP`）<br>3. Openverse Audio（免 Key 备用） | `openfilm get my-media --prompt "..."`<br>`openfilm get music-search` / `sfx-search --prompt "..." --take <id>`<br>`"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" normalize-sfx film/assets` |
 | **B. 数据对比、成本挤压、周期曲线、金句标题、因果推演** | 直接采用 [editing-vfx.md](editing-vfx.md) 的 **无外框高级视觉模组（`KT1–KT8` 动态排印 + `DV1–DV8` 物理挤压/地平线趋势面/手绘划除）**——**严禁画大圆角框套小框、无数值伪进度条或山寨 App UI 多边形** | 在 `film/scenes/` 按 `storyboard.json` 指定的 `KT/DV` 代号编写 `1080×1920` 无容器化页面 |
 | **C. 科技巨头发布新闻 / 产品报道 / 政策原文 / 真实界面** | 1. 找一手官方新闻稿/博客链接（`fetch_trends.py --mode search` 或 RSS 原文链接）<br>2. **抽官方高清无水印配图 + 截取干净官网/文件首屏**，入片挂 `PF6` 3D 透视聚光放大（严禁用代码手画假网页框代替真截图！）<br>3. **搜并截取官方发布会/Demo 3–6 秒单一连续短片段** | 抽图与截图：`"$SVP_PYTHON" .agents/.../fetch_asset.py news-page --url "<官方URL>" --out materials --screenshot`<br>搜官方视频：`fetch_asset.py video-search --query "Apple keynote official"`<br>精准切片：`fetch_asset.py video-clip --url "<URL>" --start 00:10 --end 00:16 --mute --out materials/demo.mp4` |
-| **D. 通用实拍动态 B-roll / 行业作业实景 / 情绪空镜** | 1. 查 `openfilm get my-media`（但**严禁跨片改文件名重复使用同一视频，严禁拿欧美地标冒充本土城市**）<br>2. **优先走本地已接入的 Pixabay 搜 2–4 段 `9:16` 竖屏三脚架/云台稳像实拍 `.mp4`（`2.5–5s`）**：`openfilm get video-search --orientation portrait` 或 `fetch_asset.py stock --kind video`（自动读取本地 `.local/openfilm/providers.json` 优先排原生竖屏并剔除 `timelapse/hyperlapse` 快放震荡片，未配时才降级 Wikimedia/NASA；**严禁采用天桥/人行道快放延时、手持边走边拍晃动、颠簸船拍或风扇微震 `.webm` 业余素材**）<br>3. **入片前必过 B-roll 五项硬检 + 按需 `stabilize-broll`**：① 全段 `YAVG ≥ 18` 无未显影黑头；② `scdet < 16` 无镜头内硬切；③ **舞台折算高频急动度 `hf_jerk ≤ 2.40px` 且往复反向率 `≤ 2.50/s`**（轻微手持 `1.25 < hf_jerk ≤ 2.40px` 先跑 `qc_video.py stabilize-broll` 二次光学稳像；稳像后仍超标的透视畸变片直接淘汰换片！若采用 `16:9` 横屏动态片，优先用 `L3/L6` 横窗构图而非 `1.78×` 满屏硬拉，且自带运镜视频严禁再叠 CSS `scale` 推镜）；④ 零内嵌硬字幕/台标且地标吻合；⑤ `64-bit dHash` 唯一并统一挂 `.cube` LUT | 首选竖屏搜索：`openfilm get video-search --prompt "warehouse logistics" --orientation portrait`<br>竖屏优先批抓：`"$SVP_PYTHON" .agents/.../fetch_asset.py stock --query "warehouse logistics" --kind video --download 2 --out materials --assets film/assets`<br>轻微晃动稳像：`"$SVP_PYTHON" .agents/.../qc_video.py stabilize-broll --in materials/raw.mp4 --out film/assets/broll-stab.mp4` |
+| **D. 通用实拍动态 B-roll / 行业作业实景 / 情绪空镜** | 1. 查 `openfilm get my-media`（但**严禁跨片改文件名重复使用同一视频，严禁拿欧美地标冒充本土城市**）<br>2. **候选暂存多选一（严禁盲拿 API 第 1 条直塞 `film/assets/`！）**：走本地已接入的 Pixabay 搜 **具象动作词**（如 `"automated warehouse forklift"` 而非宽泛 `"business"`），用 `fetch_asset.py stock --kind video --download 3 --out materials` 先下载 `2–4` 条候选并自动生成 `candidate-sheet-*.jpg`（若用 `openfilm get video-search --orientation portrait --take` 拉取候选，须紧接跑 `fetch_asset.py inspect-candidates` 看图验片，不符立即从 `film/assets/` 删除重挑）<br>3. **亲自看图过「六维制作要求核验」+ 按需 `stabilize-broll` → `register` 实名签收**：逐项核验**台词语义咬合、地域零穿帮/零硬字幕、竖屏构图避让字幕、影调契合剪辑风格、技术清晰稳像（`YAVG≥18`、`scdet<16`、`hf_jerk≤2.40px` 且往复反向率 `≤2.50/s`）**，仅对达标素材跑 `fetch_asset.py register --shot <镜号> --fit-reason "<具体实看说明>"` 签收入 `film/assets/credits.json` | 1. 候选暂存与自动拼图：<br>`"$SVP_PYTHON" .agents/.../fetch_asset.py stock --query "warehouse forklift sorting" --kind video --download 3 --out materials`<br>2. （若用 `openfilm get --take`）补做检视拼图：<br>`"$SVP_PYTHON" .agents/.../fetch_asset.py inspect-candidates --dir film/assets --out materials/candidate-sheet.jpg`<br>3. 轻微晃动稳像：<br>`"$SVP_PYTHON" .agents/.../qc_video.py stabilize-broll --in materials/raw.mp4 --out materials/broll-stab.mp4` |
 | **E. 抽象概念 / 搜不到的专属场景** | 1. Agent 自带生图能力（9:16 竖屏）或 OpenFilm 已接生图服务——入片采用 `PF7` 2.5D 景深视差合成，且**严禁将 9:16 竖图塞进 `>2.2×` 扁框造成截肢盲裁**<br>2. 生成视频（全片 ≤2 镜、每镜 ≤6 秒；付费须先获同意）<br>3. 失败或不可用则退回 **B 类 `KT/DV` 无框视觉模组** | Agent 生图 / `openfilm get image` / `openfilm get video` |
 
 > **单次使用与感知哈希（`64-bit dHash`）去重铁律（硬拦截）**：在同一支成片内及入口 E 的 4 个槽位之间，每一份补充视觉素材（图片与视频 B-roll，品牌固定 Logo 与源口播视频除外）不仅文件名不得重复，且经 `qc_video.py` **中心区域 `64-bit dHash` 感知哈希检测汉明距离必须 `> 10`**——严禁把同一段视频微裁切或改两个名字塞进不同子片！
 
-### 素材入库与复用命令
+### API 与外部素材「先候选暂存 → 六维制作要求核验 → 实名签收入库」强制门禁（硬拦截）
 
-筛选好 `materials/` 里的最终素材后，用 `register` 一步复制到 OpenFilm 项目素材区 `film/assets/`（通用空镜/音效可加 `--save-reusable` 同步放进 `.local/openfilm-user/saved/`，后续视频直接用 `openfilm get my-media` 复用），并自动更新 `film/assets/credits.json`：
+**铁律：API 关键词搜到 ≠ 符合本镜制作要求！严禁不看画面/不测音频就随便拿第 1 条搜索结果充数！**
+`fetch_asset.py` 已在代码层**物理封禁** `stock`、`news-page`、`video-clip` 的 `--assets` 直塞参数，且 `qc_video.py audit-render` 会对 `film/assets/credits.json` 执行**准入签收硬校验**（缺 `fit_verified: true`、`shot_id` 或具体 `fit_reason ≥ 12字` 直接 Exit `2` 阻断）。所有 API 搜索素材必须走完以下三步闭环：
+
+1. **第一步：具象检索 + 候选池多选一暂存（Stage 2–4 Candidates）**
+   - 检索词必须写成**具象物理画面/动作**（如 `"cargo ship container crane port"`、`"warehouse worker scanning barcode"`），严禁搜 `"ecommerce"`、`"success"`、`"strategy"` 等宽泛抽象词（必出假笑摆拍或廉价 CG 图）。
+   - 先列 `5+` 条元数据初筛，挑 `2–4` 条候选下载进 `runs/<目录>/materials/`（`fetch_asset.py stock --download 3 --out materials` 自动输出 4 帧检视拼图 `materials/candidate-sheet-<slug>.jpg`；若用 `openfilm get --take <id>` 下载到 `film/assets/`，必须立即跑 `fetch_asset.py inspect-candidates --files film/assets/<文件> --out materials/candidate-sheet.jpg` 补出检视拼图）。
+2. **第二步：Agent 亲自看图 / 探针核对「六维制作要求」（不达标立即淘汰重搜，绝不凑合！）**
+   - **① 台词语义精确咬合**：画面核心主体/动作必须直接印证该镜 `cue_sync_map` 正在讲的那一句事实（讲仓储履约不能拿高速路卡车糊弄；讲利润挤压不能随便塞张敲笔记本电脑水片）。
+   - **② 语境、地域与零脏字穿帮**：本土/深圳出海题严禁出现欧美街道地标、外币现金、欧美白人团队冒充国内公司；严禁含原视频硬字幕、电视台角标、竞品巨幅广告牌、图库水印或路人看镜头笑场。
+   - **③ 竖屏构图、主体落位与安全区适配**：放入本镜实际版式（`L1` 全屏 / `L3` 上半屏 / `L6` 宽银幕）后，核心主体处于安全可视中心，不被 `y > 1320px` 底部字幕/前景大字遮挡，也不被 `object-fit: cover` 裁成无意义背景墙。
+   - **④ 影调、色温与剪辑风格一致**：光影质感契合本片选定的 `editing_style`（`S01–S10`）与 `.cube` LUT（如 `S04` 沉思电影流严禁混入高饱和糖水亮片或 3D 动画渲染；`S01` 商业旗舰纪实严禁混入过曝生活随手拍）。
+   - **⑤ 技术规格与稳像达标**：短边 `≥ 720p`（优先 `1080p+`）、选用区间 `YAVG ≥ 18` 无黑头、`scdet < 16` 无镜头内二次硬切、舞台高频急动度 `hf_jerk ≤ 2.40px` 且往复率 `≤ 2.50/s`（无快放延时震荡与果冻畸变）。
+   - **⑥ 音频情绪、配器与瞬态匹配（BGM / SFX）**：严禁只看英文文件名盲选！必须跑 `qc_video.py probe-audio` 核实前 6 秒非死寂、`LRA`、真峰值 `> -30 dBTP`、`peak_offset_ms`，确保曲风配器与音效物理质感契合槽位风格（严肃商业禁尤克里里/欢快口哨/卡通气泡音）。
+   - **淘汰清退动作**：凡任一维度不达标（尤其是 `openfilm get --take` 已拉进 `film/assets/` 的候选），**必须立即从 `film/assets/` 删除**，换同批其它候选或换具象词重搜，严禁“来都来了凑合用”！
+3. **第三步：绑定分镜号实名签收入库（`register --shot --fit-reason`）**
+   筛选确认唯一达标素材后，必须运行 `register` 一步落盘至 `film/assets/`（通用优质空镜/音效可加 `--save-reusable` 同步沉淀至 `.local/openfilm-user/saved/`），并在 `film/assets/credits.json` 写入可审计的核验结论（`--fit-reason` 须 `≥ 12` 字写明实看内容与达标依据，严禁填“符合要求/OK”等敷衍词）：
 
 ```bash
-python3 .agents/skills/short-video-pipeline/scripts/fetch_asset.py register \
-  --file runs/<目录>/materials/apple-img1.jpg \
+"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py" register \
+  --file runs/<目录>/materials/pixabay-warehouse-forklift-2.mp4 \
   --assets runs/<目录>/film/assets \
-  --type news_image \
-  --source "Apple Newsroom 官方发布" \
-  --url "https://www.apple.com/newsroom/..." \
-  --license "新闻报道合理引用（画面标注来源）"
+  --name broll-s04-warehouse.mp4 \
+  --shot ms-br-04 \
+  --fit-reason "实看4帧确认：现代立体仓叉车平稳分拣货架，对应18s人工盯仓履约台词，无外文路牌与水印，冷青工业影调契合S01且云台稳像零抖动" \
+  --type stock_video \
+  --source "Pixabay (@user)" \
+  --url "https://pixabay.com/videos/..." \
+  --license "Pixabay Content License"
 ```
 
 > **入口 E（[multi-variant.md](multi-variant.md)）多项目路径提醒**：在入口 E 中，母片与 3 条延伸子片各自拥有独立目录，调用 `fetch_asset.py` 时务必将 `--out` 与 `--assets` 分别指向对应片目录（如 `runs/<目录>/master/materials` 与 `runs/<目录>/master/film/assets`，或 `runs/<目录>/variants/v1-<风格>/materials` 与 `.../film/assets`），严禁 4 片混写进同一目录。若在深层子目录执行脚本，先 source `env.sh` 后直接使用 `python3 "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/fetch_asset.py"`。

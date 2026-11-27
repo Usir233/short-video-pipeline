@@ -3,11 +3,12 @@
 素材寻源与落盘工具（纯 Python 标准库 + 复用工作区已有 playwright-core / yt-dlp / ffmpeg，零新增依赖）。
 
 子命令（先 source env.sh）：
-  1) news-page    抓官方新闻稿/博客正文事实 + 自动提取高清配图 + 可选网页干净截图
-  2) stock        搜索/下载免版权高清素材（已配本地 Pixabay 时自动优先竖屏无延时实拍，兜底 Wikimedia / NASA / Archive / Openverse）
-  3) video-search 用工作区 yt-dlp 搜索官方发布会 / 产品 Demo（YouTube 等）
-  4) video-clip   用工作区 yt-dlp + ffmpeg 按起止秒精准截取官方视频短片段（≤6s 推荐）
-  5) register     将筛选好的素材从 materials/ 放入 film/assets/（可选同步到 .local/openfilm-user/saved/）并登记 credits.json
+  1) news-page          抓官方新闻稿/博客正文事实 + 提取配图落暂存区并生成候选检视拼图（严禁未验直入 assets）
+  2) stock              搜索免版权素材候选落入 materials/ 并自动生成候选检视拼图（优先本地 Pixabay 竖屏无延时实拍）
+  3) video-search       用工作区 yt-dlp 搜索官方发布会 / 产品 Demo（YouTube 等）
+  4) video-clip         用工作区 yt-dlp + ffmpeg 按起止秒精准截取官方视频短片段至 materials/ 并生成检视帧
+  5) inspect-candidates 对候选视频/图片（含 openfilm get 下载件）生成 4 帧检视拼图 candidate-sheet.jpg 与技术规格表
+  6) register           经人工/Agent 看图试听完成「六维制作要求核验」后，签收进 film/assets/ 并写入 credits.json（必带 --shot 与 --fit-reason）
 """
 
 from __future__ import annotations
@@ -124,6 +125,149 @@ def append_credit(assets_dir: Path, entry: dict[str, Any]) -> Path:
     return credits_path
 
 
+LAZY_FIT_REASON_RE = re.compile(
+    r"^(?:ok|pass|yes|good|fit|matched|verified|符合|符合要求|合格|通过|没问题|可以|合适|匹配|测试|默认|自动下载)[\s!！.。]*$",
+    flags=re.IGNORECASE,
+)
+
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".mkv", ".ogv"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def probe_visual_candidate(path: Path) -> dict[str, Any]:
+    info: dict[str, Any] = {
+        "file": rel_to_root(path),
+        "name": path.name,
+        "kind": "video" if path.suffix.lower() in VIDEO_EXTS else "image",
+        "width": 0,
+        "height": 0,
+        "aspect_ratio": None,
+        "orientation": "unknown",
+        "duration_sec": None,
+        "yavg_min": None,
+    }
+    if not path.is_file():
+        return info
+    proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration:stream=codec_type,width,height",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if proc.returncode == 0:
+        try:
+            pj = json.loads(proc.stdout)
+            vs = next((s for s in (pj.get("streams") or []) if s.get("codec_type") == "video"), None)
+            if vs:
+                w = int(vs.get("width") or 0)
+                h = int(vs.get("height") or 0)
+                info["width"] = w
+                info["height"] = h
+                if w > 0 and h > 0:
+                    info["aspect_ratio"] = round(w / h, 3)
+                    info["orientation"] = "portrait" if h > w else ("square" if h == w else "landscape")
+            if info["kind"] == "video":
+                dur = float((pj.get("format") or {}).get("duration") or 0.0)
+                info["duration_sec"] = round(dur, 2)
+        except Exception:
+            pass
+
+    if info["kind"] == "video" and (info["duration_sec"] or 0) > 0.2:
+        eval_d = min(float(info["duration_sec"]), 5.0)
+        py = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-t",
+                f"{eval_d:.2f}",
+                "-i",
+                str(path),
+                "-vf",
+                "fps=2,scale=160:-2,signalstats,metadata=mode=print:file=-",
+                "-an",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        yavgs = [float(x) for x in re.findall(r"lavfi\.signalstats\.YAVG=(\d+(?:\.\d+)?)", py.stdout + "\n" + py.stderr)]
+        if yavgs:
+            info["yavg_min"] = round(min(yavgs), 2)
+    return info
+
+
+def build_candidate_sheet(files: list[Path], out_sheet: Path) -> tuple[str | None, list[dict[str, Any]]]:
+    """Render up to 8 visual candidates into a 1080px-wide contact sheet (4 timepoints per video, aspect-padded)."""
+    valid = [
+        f
+        for f in files
+        if f.is_file() and (f.suffix.lower() in VIDEO_EXTS or f.suffix.lower() in IMAGE_EXTS)
+    ][:8]
+    probes = [probe_visual_candidate(f) for f in valid]
+    if not valid:
+        return None, probes
+
+    out_sheet.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    fc_parts: list[str] = []
+    row_labels: list[str] = []
+    inp_idx = 0
+
+    for r_idx, (f, pr) in enumerate(zip(valid, probes)):
+        pr["sheet_row"] = r_idx + 1
+        if pr["kind"] == "video":
+            dur = max(0.4, min(float(pr.get("duration_sec") or 4.0), 8.0))
+            t_pts = [round(dur * r, 2) for r in (0.12, 0.38, 0.62, 0.88)]
+            cell_lbls: list[str] = []
+            for t_val in t_pts:
+                cmd += ["-ss", f"{t_val:.2f}", "-i", str(f)]
+                cl = f"c{inp_idx}"
+                fc_parts.append(
+                    f"[{inp_idx}:v]scale=270:420:force_original_aspect_ratio=decrease,"
+                    f"pad=270:420:(ow-iw)/2:(oh-ih)/2:color=#141414,setsar=1[{cl}]"
+                )
+                cell_lbls.append(f"[{cl}]")
+                inp_idx += 1
+            rl = f"row{r_idx}"
+            fc_parts.append(f"{''.join(cell_lbls)}hstack=inputs=4[{rl}]")
+            row_labels.append(f"[{rl}]")
+        else:
+            cmd += ["-i", str(f)]
+            rl = f"row{r_idx}"
+            fc_parts.append(
+                f"[{inp_idx}:v]scale=1080:420:force_original_aspect_ratio=decrease,"
+                f"pad=1080:420:(ow-iw)/2:(oh-ih)/2:color=#141414,setsar=1[{rl}]"
+            )
+            row_labels.append(f"[{rl}]")
+            inp_idx += 1
+
+    if len(row_labels) == 1:
+        final_map = row_labels[0]
+    else:
+        fc_parts.append(f"{''.join(row_labels)}vstack=inputs={len(row_labels)}[sheet_out]")
+        final_map = "[sheet_out]"
+
+    cmd += ["-filter_complex", ";".join(fc_parts), "-map", final_map, "-frames:v", "1", str(out_sheet)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0 or not out_sheet.is_file():
+        return None, probes
+    return rel_to_root(out_sheet), probes
+
+
 def copy_to_openfilm_areas(
     src_file: Path,
     assets_dir: Path | None,
@@ -167,6 +311,14 @@ def copy_to_openfilm_areas(
 # -------------------- 1. news-page --------------------
 
 def cmd_news_page(args: argparse.Namespace) -> int:
+    if args.assets:
+        print(
+            "错误：禁止在 news-page 抓页时使用 --assets 将未核验网页配图盲目直入 film/assets/！"
+            "请先抓入 --out runs/<目录>/materials，打开自动生成的 candidate-sheet-*.jpg 核验无媒体水印、构图与叙事吻合后，"
+            "仅对选定图片执行 fetch_asset.py register --shot <镜号> --fit-reason '<具体核验说明>'。",
+            file=sys.stderr,
+        )
+        return 2
     root = svp_root()
     pw_mod = root / "node_modules" / "playwright-core"
     if not pw_mod.exists():
@@ -309,25 +461,20 @@ const { chromium } = require(process.env.SVP_PW_MOD);
     article_json = out_dir / f"{slug}-article.json"
     article_json.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 若指定 --assets，将截图和前几张图一并登记到 OpenFilm 项目素材区（供挑选）
-    if args.assets:
-        assets_dir = Path(args.assets)
-        if screenshot_path and Path(screenshot_path).is_file():
-            copy_to_openfilm_areas(
-                Path(screenshot_path), assets_dir, None, False,
-                {"type": "news_screenshot", "source": info.get("title") or args.url, "url": args.url, "license": "新闻报道合理引用（须标注来源）"},
-            )
-        for rec in downloaded:
-            copy_to_openfilm_areas(
-                Path(rec["path"]), assets_dir, None, False,
-                {"type": "news_image", "source": info.get("title") or args.url, "url": rec["url"], "page_url": args.url, "license": "新闻/官方发布配图（须标注来源）"},
-            )
+    cand_paths: list[Path] = []
+    if screenshot_path and Path(screenshot_path).is_file():
+        cand_paths.append(Path(screenshot_path))
+    cand_paths.extend(Path(d["path"]) for d in downloaded if Path(d["path"]).is_file())
+    sheet_rel, probes = build_candidate_sheet(cand_paths, out_dir / f"candidate-sheet-{slug}.jpg")
 
     print(json.dumps({
         "article_json": str(article_json),
         "title": manifest["title"],
         "screenshot": manifest["screenshot"],
         "downloaded_images": [d["path"] for d in downloaded],
+        "candidate_sheet": sheet_rel,
+        "candidates_probe": probes,
+        "verification_required": "必须先看图打开 candidate_sheet 核验无水印且契合分镜，再用 register --shot <镜号> --fit-reason <说明> 入库",
     }, ensure_ascii=False, indent=2))
     return 0
 
@@ -359,6 +506,10 @@ def search_pixabay(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
     per_page = min(100, max(50, limit * 12))
     allow_timelapse = bool(re.search(r"timelapse|hyperlapse|time-lapse|time\s+lapse", query, flags=re.IGNORECASE))
     timelapse_tag_re = re.compile(r"\b(?:timelapse|hyperlapse|time-lapse|time\s+lapse)\b", flags=re.IGNORECASE)
+    junk_tag_re = re.compile(
+        r"\b(?:cartoon|3d\s*render|illustration|anime|animation|green\s*screen|chroma\s*key|subscribe|template|background\s*loop|vj\s*loop|emoji)\b",
+        flags=re.IGNORECASE,
+    )
 
     if kind == "video":
         params = urllib.parse.urlencode({
@@ -373,7 +524,12 @@ def search_pixabay(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
         ranked: list[dict[str, Any]] = []
         for it in (j.get("hits") or []):
             tags = str(it.get("tags") or "")
+            dur_s = float(it.get("duration") or 0.0)
+            if dur_s > 0 and dur_s < 2.0:
+                continue
             if not allow_timelapse and timelapse_tag_re.search(tags):
+                continue
+            if junk_tag_re.search(tags) and not junk_tag_re.search(query):
                 continue
             vids = it.get("videos") or {}
             chosen_v = None
@@ -609,6 +765,15 @@ def search_openverse(query: str, kind: str, limit: int) -> list[dict[str, Any]]:
 
 
 def cmd_stock(args: argparse.Namespace) -> int:
+    if args.assets:
+        print(
+            "错误：严禁在 stock 搜索时使用 --assets 将未经核验的 API 素材直接塞入 film/assets/！\n"
+            "正确流程：1) 用 --download 3 --out runs/<目录>/materials 下载多个候选；"
+            "2) 亲自看图打开自动生成的 candidate-sheet-*.jpg（音频跑 qc_video.py probe-audio）逐项核对六维制作要求；"
+            "3) 仅对核验达标的那 1 条执行 fetch_asset.py register --shot <镜号> --fit-reason '<具体实看核验结论>' 入库。",
+            file=sys.stderr,
+        )
+        return 2
     has_pixabay = bool(_load_pixabay_key())
     if args.source != "auto":
         sources = [args.source]
@@ -639,6 +804,9 @@ def cmd_stock(args: argparse.Namespace) -> int:
 
     hits = hits[: args.limit]
     downloaded: list[dict[str, Any]] = []
+    saved_paths: list[Path] = []
+    sheet_rel: str | None = None
+    probes: list[dict[str, Any]] = []
     if args.download > 0 and args.out:
         out_dir = Path(args.out)
         slug = slugify(args.query)
@@ -646,27 +814,34 @@ def cmd_stock(args: argparse.Namespace) -> int:
         for idx, h in enumerate(hits[: args.download], 1):
             try:
                 saved = download_file(h["url"], out_dir, f"{h['source']}-{slug}-{idx}", default_ext=def_ext, timeout=35.0)
-                copied = copy_to_openfilm_areas(
-                    saved,
-                    Path(args.assets) if args.assets else None,
-                    None,
-                    args.save_reusable,
-                    {
-                        "type": f"stock_{args.kind}",
-                        "source": h["source"],
-                        "title": h["title"],
-                        "author": h["author"],
-                        "license": h["license"],
-                        "url": h["url"],
-                        "page_url": h["page_url"],
-                        "query": args.query,
-                    },
-                )
-                downloaded.append({"file": str(saved), **copied, "meta": h})
+                saved_paths.append(saved)
+                downloaded.append({"file": rel_to_root(saved), "meta": h})
             except Exception as exc:
-                print(f"[warn] 下载失败 {h['url']}: {exc}", file=sys.stderr)
+                safe_dl_err = re.sub(r"key=[^&\s]+", "key=***", str(exc))
+                print(f"[warn] 下载失败 {h['url']}: {safe_dl_err}", file=sys.stderr)
+        if args.kind in {"video", "image"} and saved_paths:
+            sheet_rel, probes = build_candidate_sheet(saved_paths, out_dir / f"candidate-sheet-{slug}.jpg")
 
-    print(json.dumps({"query": args.query, "kind": args.kind, "hits": hits, "downloaded": downloaded}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "query": args.query,
+                "kind": args.kind,
+                "hits": hits,
+                "downloaded_candidates": downloaded,
+                "candidate_sheet": sheet_rel,
+                "candidates_probe": probes,
+                "verification_required": (
+                    "严禁盲选第1条！必须先看图打开 candidate_sheet（音频跑 probe-audio）逐项核对六维制作要求，"
+                    "再对唯一入选件执行 fetch_asset.py register --shot <镜号> --fit-reason '<具体实看核验说明>'"
+                    if downloaded
+                    else "候选列表仅作初筛，请挑选 2-4 条下载至 materials/ 抽帧验货后再 register 入库"
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -765,31 +940,105 @@ def cmd_video_clip(args: argparse.Namespace) -> int:
         )
         muted_tmp.replace(out_file)
 
-    copied = copy_to_openfilm_areas(
-        out_file,
-        Path(args.assets) if args.assets else None,
-        args.asset_name,
-        False,
-        {
-            "type": "official_video_clip",
-            "source": args.source or "官方视频切片（须标注来源）",
-            "url": args.url,
-            "section": f"{args.start}-{args.end}",
-            "muted": bool(args.mute),
-            "license": "新闻报道/官方发布短切片合理引用",
-        },
+    if args.assets:
+        print(
+            "错误：video-clip 切片须先落盘至 materials/ 并查看自动生成的 candidate-sheet 核验画面无硬切/无硬字幕后，"
+            "再用 fetch_asset.py register --shot <镜号> --fit-reason '<具体核验说明>' 签收入 film/assets/。",
+            file=sys.stderr,
+        )
+        return 2
+
+    sheet_rel, probes = build_candidate_sheet([out_file], out_file.parent / f"candidate-sheet-{out_file.stem}.jpg")
+    print(
+        json.dumps(
+            {
+                "file": rel_to_root(out_file),
+                "candidate_sheet": sheet_rel,
+                "candidates_probe": probes,
+                "verification_required": "请先打开 candidate_sheet 核验切片起止帧干净且契合台词，再用 register --shot <镜号> --fit-reason <说明> 入库",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
     )
-    print(json.dumps({"file": str(out_file), **copied}, ensure_ascii=False, indent=2))
     return 0
 
 
-# -------------------- 5. register --------------------
+# -------------------- 5. inspect-candidates & 6. register --------------------
+
+def cmd_inspect_candidates(args: argparse.Namespace) -> int:
+    targets: list[Path] = []
+    for f_raw in (args.files or []):
+        p = Path(f_raw)
+        if p.is_file():
+            targets.append(p)
+        elif p.is_dir():
+            targets.extend(
+                sorted(
+                    x
+                    for x in p.iterdir()
+                    if x.is_file() and (x.suffix.lower() in VIDEO_EXTS or x.suffix.lower() in IMAGE_EXTS)
+                )
+            )
+    if args.dir:
+        d = Path(args.dir)
+        if d.is_dir():
+            targets.extend(
+                sorted(
+                    x
+                    for x in d.iterdir()
+                    if x.is_file()
+                    and not x.name.startswith("candidate-sheet")
+                    and x.name.lower() != "logo.png"
+                    and (x.suffix.lower() in VIDEO_EXTS or x.suffix.lower() in IMAGE_EXTS)
+                )
+            )
+    dedup: list[Path] = []
+    seen_r: set[Path] = set()
+    for t in targets:
+        rp = t.resolve()
+        if rp not in seen_r:
+            seen_r.add(rp)
+            dedup.append(t)
+    if not dedup:
+        print("错误：未找到待检视的候选视频或图片文件", file=sys.stderr)
+        return 1
+
+    out_sheet = Path(args.out)
+    sheet_rel, probes = build_candidate_sheet(dedup, out_sheet)
+    print(
+        json.dumps(
+            {
+                "candidate_count": len(dedup),
+                "candidate_sheet": sheet_rel,
+                "candidates": probes,
+                "next_step": "请亲自看图打开 candidate_sheet 逐行核对六维制作要求；剔除不符项后，对入选素材执行 register --shot <镜号> --fit-reason '<具体实看核验说明>'",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
 
 def cmd_register(args: argparse.Namespace) -> int:
     src = Path(args.file)
     if not src.is_file():
         print(f"错误：文件不存在 {src}", file=sys.stderr)
         return 1
+    shot_id = (args.shot or "").strip()
+    fit_reason = re.sub(r"\s+", " ", (args.fit_reason or "").strip())
+    net_reason_len = len(re.sub(r"\s+", "", fit_reason))
+    if not shot_id:
+        print("错误：register 必须指定 --shot <对应分镜号或音轨槽位，如 s03 / ms-br-02 / bgm>！", file=sys.stderr)
+        return 2
+    if net_reason_len < 12 or LAZY_FIT_REASON_RE.match(fit_reason):
+        print(
+            "错误：register 必须提供真实具体的 --fit-reason（>=12字，严禁填“符合要求/OK”等敷衍套话）！\n"
+            "必须写明实看/实听核验结论：具体画面/声音内容 + 对应哪句台词需求 + 构图/地域/影调/稳像为何达标。",
+            file=sys.stderr,
+        )
+        return 2
     copied = copy_to_openfilm_areas(
         src,
         Path(args.assets),
@@ -801,9 +1050,12 @@ def cmd_register(args: argparse.Namespace) -> int:
             "url": args.url,
             "license": args.license,
             "prompt": args.prompt,
+            "shot_id": shot_id,
+            "fit_verified": True,
+            "fit_reason": fit_reason,
         },
     )
-    print(json.dumps(copied, ensure_ascii=False, indent=2))
+    print(json.dumps({"shot_id": shot_id, "fit_verified": True, **copied}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -820,21 +1072,21 @@ def main() -> int:
     p_news = sub.add_parser("news-page", help="抓取官方新闻稿/博客正文摘要、高清配图与可选网页截图")
     p_news.add_argument("--url", required=True)
     p_news.add_argument("--out", required=True, help="原件保存目录（如 runs/<目录>/materials）")
-    p_news.add_argument("--assets", default="", help="可选：同时复制到 OpenFilm film/assets/ 并记入 credits.json")
+    p_news.add_argument("--assets", default="", help="已禁用直塞：请先落盘 --out materials 检视后再用 register 签收")
     p_news.add_argument("--slug", default="")
     p_news.add_argument("--screenshot", action="store_true", help="保存 1080px 宽干净首屏截图")
     p_news.add_argument("--max-images", type=int, default=6)
     p_news.set_defaults(func=cmd_news_page)
 
-    p_stock = sub.add_parser("stock", help="搜索/下载免版权高清素材（本地已配 Pixabay 时优先竖屏稳像实拍，兜底 Wikimedia/NASA/Archive/Openverse）")
-    p_stock.add_argument("--query", required=True, help="建议用英文视觉关键词")
+    p_stock = sub.add_parser("stock", help="搜索免版权高清素材候选落入 materials/ 并生成检视拼图（本地已配 Pixabay 时优先竖屏稳像实拍）")
+    p_stock.add_argument("--query", required=True, help="建议用英文具象视觉动作关键词，勿搜宽泛概念词")
     p_stock.add_argument("--kind", choices=["image", "video", "audio"], default="image")
     p_stock.add_argument("--source", choices=["auto", "pixabay", "wikimedia", "nasa", "archive", "openverse"], default="auto")
     p_stock.add_argument("--limit", type=int, default=5)
-    p_stock.add_argument("--download", type=int, default=0, help="下载前 N 条到 --out（默认 0 仅列出候选）")
-    p_stock.add_argument("--out", default="", help="原件目录（如 runs/<目录>/materials）")
-    p_stock.add_argument("--assets", default="", help="可选：同时复制到 film/assets/ 并记入 credits.json")
-    p_stock.add_argument("--save-reusable", action="store_true", help="同步复制进 .local/openfilm-user/saved/ 供 my-media 复用")
+    p_stock.add_argument("--download", type=int, default=0, help="下载前 N 条候选到 --out 并自动生成检视拼图（默认 0 仅列出候选）")
+    p_stock.add_argument("--out", default="", help="候选暂存目录（如 runs/<目录>/materials）")
+    p_stock.add_argument("--assets", default="", help="已禁用直塞：必须先看 candidate-sheet 核验后用 register --shot --fit-reason 签收")
+    p_stock.add_argument("--save-reusable", action="store_true", help="仅在 register 阶段生效")
     p_stock.set_defaults(func=cmd_stock)
 
     p_vs = sub.add_parser("video-search", help="用工作区 yt-dlp 搜索官方发布会 / 产品 Demo")
@@ -842,20 +1094,28 @@ def main() -> int:
     p_vs.add_argument("--limit", type=int, default=5)
     p_vs.set_defaults(func=cmd_video_search)
 
-    p_vc = sub.add_parser("video-clip", help="用工作区 yt-dlp 精准截取指定时间段视频")
+    p_vc = sub.add_parser("video-clip", help="用工作区 yt-dlp 精准截取指定时间段视频至 materials/ 并生成检视拼图")
     p_vc.add_argument("--url", required=True)
     p_vc.add_argument("--start", required=True, help="如 00:10")
     p_vc.add_argument("--end", required=True, help="如 00:16")
-    p_vc.add_argument("--out", required=True, help="输出 MP4 路径（如 runs/<目录>/materials/demo.mp4）")
-    p_vc.add_argument("--assets", default="", help="可选：复制到 film/assets/ 目录并记入 credits.json")
+    p_vc.add_argument("--out", required=True, help="候选输出 MP4 路径（如 runs/<目录>/materials/demo.mp4）")
+    p_vc.add_argument("--assets", default="", help="已禁用直塞：请先看 candidate-sheet 核验后用 register 签收")
     p_vc.add_argument("--asset-name", default=None)
     p_vc.add_argument("--mute", action="store_true", help="去掉原声（用于纯 B-roll 画面）")
     p_vc.add_argument("--source", default="")
     p_vc.set_defaults(func=cmd_video_clip)
 
-    p_reg = sub.add_parser("register", help="将筛选好的素材落盘到 film/assets/（可选 saved/）并更新 credits.json")
-    p_reg.add_argument("--file", required=True)
-    p_reg.add_argument("--assets", required=True)
+    p_insp = sub.add_parser("inspect-candidates", help="为候选视频/图片生成 4 帧检视拼图 candidate-sheet.jpg 与技术规格表")
+    p_insp.add_argument("--files", nargs="*", default=[], help="待检视的候选文件路径列表")
+    p_insp.add_argument("--dir", default="", help="可选：扫描指定目录（如 materials/ 或 film/assets/）内的候选媒体")
+    p_insp.add_argument("--out", required=True, help="输出的检视拼图路径（如 runs/<目录>/materials/candidate-sheet.jpg）")
+    p_insp.set_defaults(func=cmd_inspect_candidates)
+
+    p_reg = sub.add_parser("register", help="经六维制作要求核验通过后，签收素材入 film/assets/ 并写入 credits.json")
+    p_reg.add_argument("--file", required=True, help="已核验通过的素材路径（materials/ 原件或 openfilm get 已拉取的 film/assets/ 文件）")
+    p_reg.add_argument("--assets", required=True, help="目标 film/assets 目录")
+    p_reg.add_argument("--shot", required=True, help="绑定的分镜 ID 或音轨槽位（如 s03 / ms-br-02 / bgm / sfx-hit）")
+    p_reg.add_argument("--fit-reason", required=True, help="具体核验通过说明（>=12字：实看内容 + 台词语义对应 + 地域/构图/影调/稳像核验结论）")
     p_reg.add_argument("--name", default=None)
     p_reg.add_argument("--save-reusable", action="store_true")
     p_reg.add_argument("--type", default="media")
