@@ -770,7 +770,7 @@ def main() -> int:
     p_ren.add_argument("--film-dir", default=".", help="OpenFilm 项目 film/ 目录")
     p_ren.add_argument("--out", required=True, help="输出 MP4 路径（相对 film-dir 或工作区）")
     p_ren.add_argument("--fps", type=int, default=30)
-    p_ren.add_argument("--loudness", default="-14")
+    p_ren.add_argument("--loudness", default="-15", help="默认 -15 LUFS 留足 -3dBTP 余量，防单遍 loudnorm 贴墙限幅")
     p_ren.add_argument("--workers", default="auto", help="auto(默认双跑=3/独占=4) 或显式整数 1..6")
     p_ren.add_argument("--style", default="auto", help="传给 preflight-film 的槽位风格")
     p_ren.add_argument("--skip-preflight", action="store_true", help="跳过前置 preflight-film 静态预检")

@@ -39,7 +39,7 @@
 |---|---|---|
 | `AGENTS.md`、`CLAUDE.md` | 是 | 入口说明 |
 | `.ignore`、`.geminiignore`、`.cursorignore`、`.cursorindexingignore`、`.claude/settings.json` | 是 | 面向各 Agent（Antigravity / Codex / Claude Code / Cursor）的工作区忽略与索引提速配置，仅作用于本工作区 |
-| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考规范（`references/`）、5 套离线校准 3D 调色 LUT（`assets/luts/*.cube`）、环境/并发令牌桶/寻源/候选检视签收/Python GPU 钩子与合规声画质检脚本（`scripts/env.sh`、`scripts/svp_concurrency.py` 含 Windows 全域 Chromium/GPU 双池信号量、PID 存活自愈、可用内存熔断与 `asset-claims.json` 原子防撞账本、`scripts/py_gpu_site/`、`fetch_trends.py`、`fetch_asset.py` 含 4 线程并发下载探针、`inspect-candidates` 与 `register` 跨槽防撞签收、`qc_video.py` 含 `scan-compliance`/`prepare-voice --bleeps`/`normalize-sfx`/`build-bgm-bed`/`stabilize-broll`/`probe-speaker-focus`/`preflight-film`/`audit-render`/`audit-matrix`） |
+| `.agents/skills/short-video-pipeline/` | 是 | 流程（`SKILL.md`）、参考规范（`references/`）、5 套离线校准 3D 调色 LUT（`assets/luts/*.cube`）、环境/并发令牌桶/寻源/候选检视签收/Python GPU 钩子与合规声画质检脚本（`scripts/env.sh`、`scripts/svp_concurrency.py` 含 Windows 全域 Chromium/GPU 双池信号量、PID 存活自愈、可用内存熔断与 `asset-claims.json` 原子防撞账本、`scripts/py_gpu_site/`、`fetch_trends.py`、`fetch_asset.py` 含 4 线程并发下载探针、`inspect-candidates` 与 `register` 跨槽防撞签收、`qc_video.py` 含 `scan-compliance`/`prepare-voice --bleeps`/`normalize-sfx`/`build-bgm-bed`/`stabilize-broll`/`probe-speaker-focus`/`select-cover-frames` 离线 3D FaceMesh 正对镜头自然神态筛帧/`preflight-film`/`audit-render`/`audit-matrix`） |
 | `assets/brand/` | 是 | 品牌通用静态素材（透明底品牌 Logo `logo.png`） |
 | `package.json` | 是 | 声明 OpenFilm 依赖，版本为 `latest` |
 | `node_modules/openfilm/` | 否 | [openfilm/openfilm](https://github.com/openfilm/openfilm)：素材库、剪辑、渲染 |
@@ -56,12 +56,12 @@
 - `references/sourcing.md`：国内外热点矩阵、5 类镜头素材寻源方案、本地 4 线程并发拉取与 `asset-claims.json` 跨槽原子防撞、API 素材「候选暂存 → 六维制作要求核验 → 实名签收」强制门禁
 - `references/setup.md`：新环境的安装步骤、已有环境的更新步骤
 - `references/copywriting.md`：视频号、小红书、抖音发布文案写法（`G0–G4` 五号组人设绑定、`content_archetype` 诚实钩子契约、平台敏感词脱敏、四项文案、反论文腔短标题、禁生造歧义缩略词、三层标签法与辰奕品牌主张融入）
-- `references/cover-design.md`：三平台竖版商业画报封面设计规范（统一竖版精确尺寸：抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`；封面字幕/主标题统一置于人物头顶上方水平居中；5 套异构杂志拓扑 `C1–C5`、精确账号 IP 名刊头防串台、20–30 帧五维选帧与巨字视觉锤）
-- `references/editing-styles.md`：十大短视频剪辑风格总谱（`S01–S10`）、单片路由与入口 E 五号组（`G0–G4`）人设风格对位、8 大类 34 项剪辑蒙太奇刀法（`H1–H6` 黄金 3 秒冷开、`D1–D5` 精剪去口癖、`JL1–JL5` 声画错位与 B-roll 遮切、`C1–C8` 光学运镜、`L1–L7` 版式拓扑、`B1–B8` B-roll 稳像防抖/运镜解耦/六维签收铁律与 `O1–O4` 尾韵）
-- `references/editing-vfx.md`：OpenFilm 特效与动态视觉规范（具象业务 UI 载体设计 vs 抽象废线清零、纯 `frame(t)` 确定性铁律、10 轨标准栈、7 大类 42 项特效原语 `KT1–KT8`/`DV1–DV8`/`PF1–PF7`/`TR1–TR10`/`AT1–AT5`、`SUB1–SUB6` 零胶囊框五槽等距字幕矩阵、`--of-lut` 调色与 `face_cx_pct` 人脸焦点居中锁死、平台敏感词 `1000Hz`「哔」声屏蔽 +「某X」字幕脱敏、两段式广播级混音管线）
-- `references/multi-variant.md`：入口 E 与多原片批量规范（原片+素材分流、`scan-compliance` + `prepare-voice --bleeps` + `probe-speaker-focus`、三态视觉资产接入［交互 `.html` 确定性重构 / 时间戳 `.png` 拆解重绘 / 专职可视化子代理］、零等待 5 槽异构扇出、`svp_concurrency.py` 全域双池信号量排队渲染、多输入批量 `≤6` 子代理水位与单期故障隔离、精确账号 IP 封面防串台与 `delivery/` 统一交付包）
+- `references/cover-design.md`：三平台竖版商业画报封面设计规范（统一竖版精确尺寸：抖音 `1080×1920`、小红书 `1242×1660`、视频号 `1080×1440`；封面字幕/主标题统一置于人物头顶上方水平居中；`qc_video.py select-cover-frames` 离线 478 点 3D FaceMesh **正对镜头 + 自然舒展五官**定量选帧与全局统筹、5 套异构杂志拓扑 `C1–C5`、精确账号 IP 名刊头防串台与巨字视觉锤）
+- `references/editing-styles.md`：十大短视频剪辑风格总谱（`S01–S10`，含 `S04` 竖屏变形银幕散文电影五维构图演进标准）、单片路由与入口 E 五号组（`G0–G4`）人设风格对位、8 大类 34 项剪辑蒙太奇刀法（`H1–H6` 黄金 3 秒冷开、`D1–D5` 精剪去口癖、`JL1–JL5` 声画错位与 B-roll 遮切、`C1–C8` 光学运镜、`L1–L7` 版式拓扑与 `speaker-pip` 原子同帧同步协议、`B1–B8` B-roll 稳像防抖/运镜解耦/六维签收铁律与 `O1–O4` 尾韵）
+- `references/editing-vfx.md`：OpenFilm 特效与动态视觉规范（具象业务 UI 载体设计 vs 抽象废线清零、纯 `frame(t)` 确定性铁律、10 轨标准栈与 `speaker-pip` `[host_start, host_end - 0.001)` 零独立 `fade` 边框内聚铁律、`S04` 黑曜石纯 `<canvas>` 空间光影隐喻场与 `68–104px` Halation 巨字、7 大类 42 项特效原语 `KT1–KT8`/`DV1–DV8`/`PF1–PF7`/`TR1–TR10`/`AT1–AT5`、`SUB1–SUB6` 零胶囊框五槽等距字幕矩阵、`--of-lut` 调色与 `face_cx_pct` 人脸焦点居中锁死、平台敏感词 `1000Hz`「哔」声屏蔽 +「某X」字幕脱敏、两段式广播级混音管线）
+- `references/multi-variant.md`：入口 E 与多原片批量规范（原片+素材分流、`scan-compliance` + `prepare-voice --bleeps` + `probe-speaker-focus` + `select-cover-frames` 全母片正脸帧池统筹、三态视觉资产接入［交互 `.html` 确定性重构 / 时间戳 `.png` 拆解重绘 / 专职可视化子代理］、零等待 5 槽异构扇出、`svp_concurrency.py` 全域双池信号量排队渲染、多输入批量 `≤6` 子代理水位与单期故障隔离、精确账号 IP 封面防串台与 `delivery/` 统一交付包）
 - `references/creatorhub-api.md`：CreatorHub 文档索引、调用约定（含 `v0.6.0` 账号角色隔离、脱敏诊断、封面边界）与安全红线（**当前默认停用，仅在用户显式要求启用时参考**）
-- `references/publish-audit.md`：发布前审核门禁（全竖版 `1080×1920` 视频硬门禁、`preflight-film` 渲染前 3 秒预检、双通道 `DOM+Canvas` 业务实体词锚定、主讲人居中防出框、像素级半屏死黑空洞与顶栏越界硬拦截、平台敏感词「哔」声与「某X」脱敏、`G0–G4` 账号 IP 名防混乱、三平台竖版封面精确尺寸与头顶居中标题门禁、API 素材六维签收、入口 E 跨 5 片反克隆门禁）
+- `references/publish-audit.md`：发布前审核门禁（全竖版 `1080×1920` 视频硬门禁、`preflight-film` 渲染前 3 秒预检、双通道 `DOM+Canvas` 业务实体词锚定、主讲人居中防出框、全槽位 `1 fps` 流式像素扫描拦截单窄条死黑霸屏与半屏空洞、`speaker-pip` 首尾 `50ms` 像素存活与零空壳框、封面人像 3D FaceMesh 正脸神态硬门禁与 `safezone-cover-faces.png` / `matrix-cover-faces.png`、平台敏感词「哔」声与「某X」脱敏、`G0–G4` 账号 IP 名防混乱、API 素材六维签收、入口 E 跨 5 片反克隆门禁）
 
 ## 检索范围与提速约定（面向所有 Agent）
 

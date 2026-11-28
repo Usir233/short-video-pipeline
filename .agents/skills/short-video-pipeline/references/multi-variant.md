@@ -144,13 +144,14 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
    - 用户明确说了「已处理 / 已粗剪 / 直接当母素材」，或输入位于工作区 `素材投递区/已粗剪/` 下且用户未另行要求粗剪 → `gates.input_state_confirmed = true`、`gates.rough_cut_approved = "skipped_processed"`，跳过步骤 E1 人工闸门：若源片 `>1440p` 或关键帧间隔 `>0.5s`，用显卡一次性转出 `1440p + -g 8` 快解母片放入 `master-assets/clips/`，否则按零重复拷贝原则归档原片切片、生成 `*-voice-treated.m4a` 并写 `manifest.json`。**关键红线：`master-assets/clips/` 保持完整不剪碎是为了统一时间码基准，但下游 `00-master` 与 `v1..v4` 各自制作时，仍必须在各自 `storyboard.json` 中用 `time_slices` 切净片头采访者搭话、推眼镜冷场与口头禅，并设计 `H1–H6` 黄金 3 秒冷开，严禁把前 7 秒冷场原封不动端进成片！**；
    - 用户明确说了「未处理 / 原片 / 先粗剪」，或输入位于工作区 `素材投递区/未处理原片/` 下且用户未声明已处理 → `gates.input_state_confirmed = true`，进入步骤 E1；
    - 用户未明确说明处理状态且输入不在 `素材投递区/已粗剪/` 或 `素材投递区/未处理原片/` 中 → Agent 先结合 `ffprobe` 与轻量试听/静音检测初步判断，将 `run.json` 置 `status: "waiting_approval"`、`gates.pending_gate: "gate_0_input_state"`，**停下用一句话向用户确认是已处理还是未处理**，绝不擅自跳过粗剪。
-6. **主讲人人脸水平质心标定（`probe-speaker-focus`）与三态配套视觉资产标准化接入（V3.1 强制前置）**：
+6. **主讲人人脸居中焦点标定（`probe-speaker-focus`）、全母片正脸封面帧池筛查（`select-cover-frames`）与三态配套视觉资产标准化接入（强制前置）**：
    - **人脸居中焦点锁死**：确立 `master-assets/clips/` 后立即运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" probe-speaker-focus --video <母素材切片> --out master-assets/clips/speaker-focus.json`，将测得的 `face_cx_pct`、`head_top_v`、`chin_v`、`span_v` 同步写入 `master/script/master-plan.json` 的 `speaker_focus` 字段；下游全部 5 个槽位切近景放大时必须对齐 `face_cx_pct`，严防人脸偏入右侧 `x > 930px` 点赞禁区；
+   - **全母片正对镜头自然封面帧池统筹（根治子片侧脸/歪头/抿嘴抽象封面）**：若 `covers_enabled` 为 `true`，在 `E0` 同步运行 `"$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" select-cover-frames --video <母素材切片> --mode matrix --out-dir runs/<目录>/master-assets/cover-candidates`，通过离线 YuNet + 478 点 3D FaceMesh 扫描全片筛出正对镜头（高 `cheek_sym`）、水平端正（`|roll| ≤ 8.5°`）、双瞳平视、口唇自然舒展（零吞咽抿嘴/露下牙）的候选原帧，生成 `face-zoom-sheet.jpg` 与 15 张封面预配表 `cover-frame-pool.json`；下游 `00-master` 与 `v1..v4` 优先从该全局正脸池按槽领用互不重复的正脸好帧（无需局限于各子片裁剪切片内的侧脸帧）；
    - **三态配套视觉资产接入协议（彻底终结剪辑工手搓脱离语境的简陋 SVG）**：
      1. **投递含交互 `.html`（如演示动效网页）**：**严禁薄套壳直挂**！必须派**专职可视化子代理**执行「纯函数确定性重构 + 竖屏安全区重排」——提升闭包私有时间轴变量，剥离全部 CSS `transition`、`setTimeout`、`setInterval`、`requestAnimationFrame`，重写为纯 `window.film.frame(t)` 确定性插值公式，并将横屏排版重排入 `1080×1920` 安全区（`x ≤ 910px, y = 200..1360px`）接入 `00-master`；`v1–v3` 继承其中的真实业务案例与数据，重构为各自异构展现形态；
      2. **投递含时间戳静态 `.png` 组图（如 `028-04-00m02s-xxx.png` 多张课件表）**：`00-master` 按文件名精确秒数以 `PF6` 3D 聚光灯/局部放大动效挂载原图；`v1–v3` 由视觉模型读图提取核心表格/阶梯数据，重绘为各自账号人设的原生 HTML/SVG 动效形态（**严禁 5 条成片同贴一张静态死图**）；
      3. **纯 `.mp4 + .srt` 无配套视觉件**：由专职可视化子代理通读逐字稿，锚定片中最具象的业务案例、数字与前后反差精写母版 `1080×1920` 叙事动效 HTML，并经 `svp_concurrency.py look` 抽检 4 张关键帧（确认静音仅看画面即可秒懂业务含义）后交下游异构裂变。
-   - **母片与子片动效异构铁律（同源业务事实，异构展现形式，严禁简单换 CSS 颜色）**：`00-master` 为商业旗舰全景推演（或 `PF6` 原件聚光）；`01-v1` 重构为**双态手机对话追问气泡流 / 高反差刷屏卡片流**；`02-v2` 重构为**`#F2EFE9` 暖棉纸手账因果拆解树 + 荧光笔批注单**；`03-v3` 重构为**上下冷暖双域红笔划除误区 vs 电光青破局动作交锋台**；`04-v4` 保持**`2.39:1` 变形宽银幕纯光学实拍留白（零 UI 卡片与图表）**。
+   - **母片与子片动效异构铁律（同源业务事实，异构展现形式，严禁简单换 CSS 颜色）**：`00-master` 为商业旗舰全景推演（或 `PF6` 原件聚光）；`01-v1` 重构为**双态手机对话追问气泡流 / 高反差刷屏卡片流**；`02-v2` 重构为**`#F2EFE9` 暖棉纸手账因果拆解树 + 荧光笔批注单（角落 `168px` 圆形头像边框内聚在 `<video>` 自身并锁死 `[host_start, host_end - 0.001)` 零独立 `fade`）**；`03-v3` 重构为**上下冷暖双域红笔划除误区 vs 电光青破局动作交锋台**；`04-v4` 构建**五维竖屏变形银幕散文电影（`L1/PF3` 满屏浅景深人像 + 必选 `L4` 三轨 3D LUT 胶片三联画格 + 必选 `L5-LightField` 黑曜石暗金纯 `<canvas>` 空间光影隐喻场 + `≤30%` `L6` 动态遮幅 + `68–104px` Halation 衬线巨字，严禁单窄条死黑从头挂到尾，零 UI 卡片与图表）**。
 
 ### 步骤 E1：粗剪与强制人工确认（闸门 1，仅未处理输入触发）
 
@@ -219,7 +220,7 @@ runs/<YYYYMMDD-HHMM>-<话题短名>/
        - **方向与剪辑（禁用讲座大框与 `v1` 重黑边弹簧字！）**：紧扣“老郑实战”人设，抽取行业普遍踩坑的旧共识靶子 vs 老郑一线真刀真枪的实战判断；`H5` 靶子旧共识亮出（`0–4s`）→ `DV4` 珊瑚红双笔疾速划除并配低频打断音 → `L7` 冷暖双域无框斜切/上下交锋分屏拆解真相 + `L1` 近景直视定论（ASL `2.6–4.2s`）；封面采用 **`C5` 误区划除交锋头版画报**，刊头居中印 **`老郑AI经营实战`**；
        - **字幕体制（`SUB5`）**：极简几何无框等宽混排 + 电光青 `#38BDF8` `2px` 刻度下划线（`46px`，**`top: 1366px`**）。
      - **`04-v4` ↔ `G4` · `老郑AI经营论`（“经营论”：商业周期本质与企业家人性独白 · 默认 `S04` · `v3-obsidian-film.cube` · 封面 `C4`）**：
-       - **方向与剪辑（禁用圆角信息盒、SVG 图表、`//` 科技胶囊、贴纸与气泡音效！）**：紧扣“经营论”思想高度，沉淀穿越周期的底层商业规律与组织哲思独白；`H6` 时空坐标呼吸冷开 + 同源虚化底 `--of-cutout: 1` 浅景深光学特写 + `L4/L6` `2.39:1` 宽银幕胶片构图 + `KT3` 光学散焦显影金句 + 大提琴低频氛围铺底配重句 `Silence Drop`，终帧真溶黑 `#000000`；封面采用 **`C4` 黑曜石电影剧照海报**，刊头居中印 **`老郑AI经营论`**；
+       - **方向与剪辑（五维竖屏银幕散文电影：严禁单窄条死黑挂到底，禁用圆角信息盒、SVG 图表、`//` 科技胶囊、贴纸与气泡音效！）**：紧扣“经营论”思想高度，有效 `ASL ≤ 5.5s`、单镜 `≤ 6.5s`；强制组合 **`L1/PF3` 满屏暗角浅景深人像（`35%–50%`）+ 必选 `L4` 三轨 3D LUT 胶片三联画格 + 必选 `L5-LightField` 黑曜石暗金纯 `<canvas>` 空间光影隐喻场 + `≤30%` `L6` 动态遮幅 + `KT3` `68–104px` 胶片暗房光晕 Halation 衬线巨字**，大提琴低频氛围铺底配重句 `Silence Drop`，终帧真溶黑 `#000000`；封面采用 **`C4` 黑曜石电影剧照海报**，刊头居中印 **`老郑AI经营论`**；
        - **字幕体制（`SUB4`）**：影院级 `+2.5px` 宽字距暖象牙细衬线纯字（`42px`，**`top: 1504px`**）——**五槽字幕 `top` 精准形成 `1320 (v1) / 1366 (v3) / 1412 (master) / 1458 (v2) / 1504 (v4) px` 等距阶梯（相邻互差 `46px ≥ 40px`、总跨度 `184px ≥ 160px`）！**
    - 将 4 条子片的 `account_group`（`G1–G4`）、`account_ip_name`、`editing_style`（`S01–S10`）、`color_lut`、`cold_open`（`H1–H6`）、精剪 `time_slices`、`silence_drops`、`layout_paradigm`、`speaker_mode`、`subtitle_system`（`SUB1–SUB6`）、`cover_topology`（`C2–C5`）与独立补素材清单完整写入 `master/script/master-plan.json`。
 3. **【闸门 2】母片确认 vs「一路跑完」零等待扇出协议 + 整夹多原片跑批规范**：

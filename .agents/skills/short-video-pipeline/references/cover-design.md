@@ -45,16 +45,28 @@
 
 ---
 
-## 三、前置网格五维选帧与人像光学精修铁律
+## 三、离线 478 点 3D FaceMesh 正脸自然神态定量筛帧与人像精修铁律
 
-1. **前置网格选神态协议（必产 `materials/covers/contact-sheet.jpg`）**：
-   - 严禁盲填秒数抽帧！开工先用 `ffmpeg`（优先加 `-hwaccel cuda`）从干净无字幕源片（如 `master-assets/clips/`）按均匀步长抽取编号缩略图（单片 `16–24` 张，**入口 E `20–30` 张**）拼成 `materials/covers/contact-sheet.jpg`；
-   - Agent 必须用看图工具亲自审阅接触表，按**五维黄金表情标准**挑出各平台截帧（入口 E 跨 5 片抽帧间隔 `≥ 6.0s` 且 `64-bit dHash` 互异，同片三平台间隔 `≥ 2.5s`，确保全部封面神态零重复）：
-     - ① **零遮脸**：手掌、手指、道具严禁遮挡眉眼、鼻梁、嘴唇或推眼镜梁；
-     - ② **眼神定格有高光**：双眼睁开度 `≥ 80%`，视线平视或微斜定焦，镜片反光不压瞳孔，**严禁选眼球下垂看桌面的念稿帧**；
-     - ③ **嘴型紧致笃定**：选微抿定格或重音清晰张口帧，**严禁选嘴角松垮微张、单露下排牙的过渡废帧**；
-     - ④ **零动态拖影与边缘残肢**（严禁画面角落漏出半截被羽化截断的手指，人物下缘须自然隐入底部暗区或画框内，不露生硬裁切边）；
-     - ⑤ 在 `cover-spec.json` 必填 `"contact_sheet"` 相对路径、`"account_ip_name"`、`"title_placement": "overhead_centered"` 与每张封面的 `"frame_selection_note"`。
+1. **强制前置定量筛帧协议（必跑 `qc_video.py select-cover-frames`，严禁盲抽气口废帧！）**：
+   - **彻底废除「按固定等步长或盲抽 SRT 句间静音气口帧」旧做法**：实测访谈源片中句间气口高概率命中**吞咽口水内卷抿嘴（`lip_fullness < 0.44`）、辅音前撅嘟嘴、眨眼松懈或转头看场外主持人**，导致封面面庞抽象变形！
+   - 开工统一运行工作区内置离线双模型筛帧引擎（串联 `.local/rea-video/models/face_detection_yunet_2023mar.onnx` 与 `node_modules/openfilm/models/vision/face.task` 478 点 3D FaceMesh + 双虹膜，零新增外部依赖）：
+     ```bash
+     # 单片流程（输出至 runs/<目录>/materials/covers/）
+     "$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" select-cover-frames \
+       --video <干净口播源片> --mode single --out-dir runs/<目录>/materials/covers
+
+     # 入口 E 矩阵流程（在 E0 全母片统一扫描产出全局正对镜头帧池！）
+     "$SVP_PYTHON" "$SVP_ROOT/.agents/skills/short-video-pipeline/scripts/qc_video.py" select-cover-frames \
+       --video runs/<目录>/master-assets/clips/<母素材切片.mp4> --mode matrix \
+       --out-dir runs/<目录>/master-assets/cover-candidates
+     ```
+   - **四维生理硬红线与入口 E 全局正脸统筹法则（正常正对镜头高于一切！）**：
+     - ① **正对镜头端正度（`S_pose`）**：优先锁定全片眉心-双颊对称比最高（正脸回眸片 `cheek_sym ≥ 0.60`，审核底线 `≥ 0.56`；固定斜机位片取全片最正 Top 28%）且双瞳水平倾角 **`|roll_deg| ≤ 8.5°`**（审核底线 `≤ 9.0°`）的端正帧，硬淘大侧脸与歪脖斜头帧；
+     - ② **双瞳正视有神（`S_eye`）**：双眼睁开度 `min_ear ≥ 0.185`、左右开度差 `≤ 24.5%`、双虹膜水平正视镜头 `|gaze_x - 0.525| ≤ 0.068`、纵向平视 `gaze_y ∈ [0.29, 0.56]`、镜片反光遮瞳 `≤ 8%`，硬淘斜瞟场外、垂眼看桌与眨眼瞬间；
+     - ③ **口唇自然舒展“黄金舒适带”（`S_mouth`）**：双端封杀口型畸变——同时硬淘张嘴过大/单露下排牙（`mar_inner > 0.145`）、**句间吞咽内卷抿嘴/憋笑瘪嘴（`lip_fullness < 0.45`）**、**辅音前撅吹哨嘟嘴（`mouth_width_ratio < 0.41`）** 与单侧歪嘴抽动（`corner_asym > 0.078`），优先选运动波谷微合或自然舒展帧；
+     - ④ **清晰零糊手（`S_clean`）**：淘汰动态模糊与下巴两侧挥手残影（`hand_intrusion > 0.20`）；
+     - ⑤ **入口 E 打破子片切片画地为牢**：访谈主讲人转头**正对镜头**的时刻在时间轴上呈簇状分布；若某子片裁剪的 `30s` 时段内主讲人全程偏向侧方，**严禁硬抠该子片侧脸充数**，必须直接采用 `master-assets/cover-candidates/cover-frame-pool.json` 跨全母片统筹预配的互不重复正脸高分帧（跨槽间隔 `≥ 1.1s`、同片三平台间隔 `≥ 2.4s` 且 `dHash` 互异），并亲自查看 `420×480` 五官放大检视表 **`face-zoom-sheet.jpg`** 复核后写入 `cover-spec.json`。
+   - **自动化 CV 复核硬门禁**：`qc_video.py audit-render` 与 `audit-matrix` 会直接对渲染落盘的每张 `covers/*.png` 跑 478 点 3D FaceMesh 实测校验，并自动输出 `1:1` 五官特写复核单 **`output/check/safezone-cover-faces.png`** 与 **`master/output/check/matrix-cover-faces.png`**，任何侧脸、歪头、斜视、半闭眼或抿嘴抽象帧一律硬阻断。
 2. **抠像禁区与实景光学精修铁律**：
    - 凡非影棚绿幕拍摄、或人物为蓬松卷发 / 佩戴半透明细框眼镜 / 室内暗光源片，**严禁在亮色背景（背景 RGB 均值 `> 185`）上裸放透明抠像 PNG**（必出灰雾碎发与碎镜框脏边，由 `qc_video.py` 硬拦截）！亮底一律采用实景摄影内画框（`.photo-frame { overflow: hidden }`）裁切；
    - 深暗底封面推荐默认采用**实景原帧光学精修**（上部与底部平滑暗化托字 + 背景轻景深虚化 + 面部曲线提亮去黄绿浊气）；若深暗底确需抠像，使用 `rea-video/.venv`（自动走 GPU `CUDAExecutionProvider`）执行 Alpha 内缩 `2px` + 肩颈自然受光过渡，**严禁在人物背后垫 `border-radius: 50%` 圆形发光 `div` 充当假手电筒背光**。

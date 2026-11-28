@@ -54,6 +54,7 @@ import subprocess
 import sys
 import tempfile
 import wave
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,9 @@ OPENING_FILLER_PATTERNS = [
     r"^所以说",
     r"^那我们就把",
     r"^那这个",
+    r"^在这个过程中[，,、\s]*$",
+    r"^在这个过程中(?=AI|我们|大家|其实|就)",
+    r"^在这样的?(?:一个)?(?:过程|背景|情况)下",
     r"^(?:然后)?最近(?:反正)?[你我他大]",
     r"应该是几几年",
     r"^我觉得(?:他们|大家|现在)?(?:现在)?都会有一个",
@@ -173,10 +177,19 @@ MASKED_SENSITIVE_TOKEN_RE = re.compile(
 STYLE_ASL_THRESHOLDS = {
     "master": 7.5,  # G0 跨境AI十亿增长局 (S01 商业旗舰纪实)
     "v1": 3.5,      # G1 时奕聊AI经营 (S02 网感痛点快剪)
-    "v2": 7.5,      # G2 辰奕AI经营实战 (S03/S10 白板推演与实战拆解)
+    "v2": 6.2,      # G2 辰奕AI经营实战 (S03/S10 白板推演与实战拆解)
     "v3": 5.5,      # G3 老郑AI经营实战 (S08/S07 误区证伪与实战避坑)
-    "v4": 8.0,      # G4 老郑AI经营论 (S04 宽银幕电影独白经营哲思)
-    "default": 7.5,
+    "v4": 5.5,      # G4 老郑AI经营论 (S04 竖屏变形银幕散文电影)
+    "default": 7.0,
+}
+
+STYLE_MAX_SPEAKER_SHOT_SEC = {
+    "master": 8.8,
+    "v1": 4.8,
+    "v2": 6.5,
+    "v3": 6.5,
+    "v4": 6.5,
+    "default": 8.5,
 }
 
 SLOT_ACCOUNT_MAP: dict[str, dict[str, str]] = {
@@ -1616,24 +1629,41 @@ def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
         src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
         at_m = re.search(r'\bat=["\'](\d+(?:\.\d+)?)["\']', attrs)
         dur_m = re.search(r'\bdur=["\'](\d+(?:\.\d+)?)["\']', attrs)
+        spd_m = re.search(r'\bspeed=["\'](\d+(?:\.\d+)?)["\']', attrs)
         id_m = re.search(r'\bid=["\']([^"\']+)["\']', attrs)
         cls_m = re.search(r'\bclass=["\']([^"\']+)["\']', attrs)
         style_m = re.search(r'style=["\']([^"\']+)["\']', attrs)
+        ovr_m = re.search(r"\boverrides=(['\"])([\s\S]*?)\1", attrs)
         if not src_m:
             continue
         raw_src = src_m.group(1)
         base_src = raw_src.split("#", 1)[0]
-        at_val = float(at_m.group(1)) if at_m else 0.0
+        at_val = round(float(at_m.group(1)), 3) if at_m else 0.0
+        speed_val = max(0.05, float(spd_m.group(1))) if spd_m else 1.0
         t_in: float | None = None
         t_out: float | None = None
         tm = re.search(r"#t=(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?", raw_src)
         if tm:
-            t_in = float(tm.group(1))
-            t_out = float(tm.group(2)) if tm.group(2) else None
-        dur = (t_out - t_in) if (t_in is not None and t_out is not None) else (
-            float(dur_m.group(1)) if dur_m else None
+            t_in = round(float(tm.group(1)), 3)
+            t_out = round(float(tm.group(2)), 3) if tm.group(2) else None
+        dur = (
+            round((t_out - t_in) / speed_val, 3)
+            if (t_in is not None and t_out is not None)
+            else (round(float(dur_m.group(1)), 3) if dur_m else None)
         )
-        end_val = (at_val + dur) if dur is not None else None
+        end_val = round(at_val + dur, 3) if dur is not None else None
+        fade_in = 0.0
+        fade_out = 0.0
+        if ovr_m:
+            try:
+                ovr_data = json.loads(ovr_m.group(2))
+                ovr_items = ovr_data if isinstance(ovr_data, list) else [ovr_data]
+                for ov_it in ovr_items:
+                    if isinstance(ov_it, dict) and isinstance(ov_it.get("fade"), list) and len(ov_it["fade"]) >= 2:
+                        fade_in = max(fade_in, float(ov_it["fade"][0] or 0.0))
+                        fade_out = max(fade_out, float(ov_it["fade"][1] or 0.0))
+            except Exception:
+                pass
         anim_name = None
         if style_m:
             am = re.search(r"animation:\s*([A-Za-z0-9_-]+)", style_m.group(1))
@@ -1648,8 +1678,11 @@ def parse_clips_in_section(section_html: str) -> list[dict[str, Any]]:
                 "at": at_val,
                 "t_in": t_in,
                 "t_out": t_out,
+                "speed": speed_val,
                 "dur": dur,
                 "end": end_val,
+                "fade_in": fade_in,
+                "fade_out": fade_out,
                 "anim": anim_name,
                 "style": style_m.group(1) if style_m else "",
             }
@@ -3093,6 +3126,27 @@ def audit_film_dir(
         ):
             fx_trans_clips.extend(parse_clips_in_section(tm.group(1)))
 
+        aux_visual_clips: list[dict[str, Any]] = []
+        triptych_clips: list[dict[str, Any]] = []
+        known_sec_re = re.compile(
+            r"^(?:main-stage|speaker-pip|overlays|subtitles|vignette-grade|paper-backdrop|voice-track|.*cutout.*|.*sticker.*|.*transition.*|.*fx-trans.*|.*bgm.*|.*music.*|.*bed.*|.*sfx.*|.*foley.*|.*ambience.*)$",
+            flags=re.IGNORECASE,
+        )
+        for ax_m in re.finditer(
+            r'<section[^>]*id=["\']([^"\']+)["\'][^>]*>(.*?)</section>',
+            html_txt,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            ax_id = ax_m.group(1)
+            if known_sec_re.match(ax_id):
+                continue
+            ax_parsed = parse_clips_in_section(ax_m.group(2))
+            for ax_c in ax_parsed:
+                ax_c["section_id"] = ax_id
+            aux_visual_clips.extend(ax_parsed)
+            if "triptych" in ax_id.lower():
+                triptych_clips.extend(ax_parsed)
+
         # Identify speaker source video basenames
         all_video_refs = re.findall(
             r'<video\b[^>]*src=["\']([^"\']+\.(?:mp4|mov|webm|mkv))(?:#[^"\']*)?["\']',
@@ -3117,8 +3171,10 @@ def audit_film_dir(
             bn = Path(c["base_src"]).name.lower()
             return bn in speaker_vids_early or bool(SPEAKER_VID_NAME_RE.search(bn))
 
-        # 3b. Optical Color Grading (--of-lut) check on speaker <video> clips
-        all_speaker_clips = [c for c in (main_clips + pip_clips + cutout_clips) if is_speaker_vid_clip(c)]
+        # 3b. Optical Color Grading (--of-lut) check on speaker <video> clips (including auxiliary tracks)
+        all_speaker_clips = [
+            c for c in (main_clips + pip_clips + cutout_clips + aux_visual_clips) if is_speaker_vid_clip(c)
+        ]
         if all_speaker_clips:
             ungraded_ids: list[str] = []
             missing_lut_files: list[str] = []
@@ -3226,24 +3282,83 @@ def audit_film_dir(
                     f"主讲人近景水平跑偏出框：{', '.join(offcenter_faces[:4])} —— 人脸中心偏离安全居中带(脸心 x=320..650px 且右缘 <=915px)，易导致半张脸/眼镜撞入右侧点赞禁区(x>930px)或左缘裁切！请按 `probe-speaker-focus` 输出的 `recommended_object_position` 对齐居中"
                 )
 
-        # 3c. Main-stage pacing, snap-back, mid-sentence fake jump-cut & unmasked non-contiguous jump-cut
+        # 3c. Main-stage pacing, effective shot merger, mid-sentence fake jump-cut & S04 topology craft
         if main_clips:
             main_clips.sort(key=lambda c: c["at"])
             shot_count = len(main_clips)
-            asl = duration / shot_count if shot_count > 0 else 0.0
-            max_shot = max((c["dur"] or 0.0) for c in main_clips)
+
+            def _clip_vis_height(mc_item: dict[str, Any]) -> float:
+                m_css_v = merged_clip_css(mc_item)
+                bw_v = parse_css_px(m_css_v, "width", 1080.0) or 1080.0
+                bh_v = parse_css_px(m_css_v, "height", 1920.0) or 1920.0
+                it_v, _, ib_v, _ = resolve_pip_steady_inset(m_css_v, keyframes_map, bw_v, bh_v)
+                return max(1.0, bh_v - it_v - ib_v)
+
+            # Merge contiguous same-source speaker clips with near-identical framing/scale (anti-fake-shot gaming)
+            effective_shots: list[dict[str, Any]] = []
+            for mc_it in main_clips:
+                mc_dur = mc_it["dur"] if mc_it["dur"] is not None else max(0.0, (mc_it["end"] or duration) - mc_it["at"])
+                mc_vh = _clip_vis_height(mc_it)
+                mc_sc = resolve_max_scale_in_css(merged_clip_css(mc_it), keyframes_map)
+                if (
+                    effective_shots
+                    and is_speaker_vid_clip(effective_shots[-1]["last_clip"])
+                    and is_speaker_vid_clip(mc_it)
+                    and effective_shots[-1]["last_clip"]["base_src"] == mc_it["base_src"]
+                    and effective_shots[-1]["last_clip"]["t_out"] is not None
+                    and mc_it["t_in"] is not None
+                    and abs(mc_it["t_in"] - effective_shots[-1]["last_clip"]["t_out"]) < 0.12
+                    and abs(mc_vh - effective_shots[-1]["vis_h"]) < 120.0
+                    and abs(mc_sc - effective_shots[-1]["max_sc"]) < 0.05
+                ):
+                    effective_shots[-1]["dur"] += mc_dur
+                    effective_shots[-1]["end"] = mc_it["end"] or (mc_it["at"] + mc_dur)
+                    effective_shots[-1]["last_clip"] = mc_it
+                else:
+                    effective_shots.append(
+                        {
+                            "id": mc_it["id"],
+                            "at": mc_it["at"],
+                            "dur": mc_dur,
+                            "end": mc_it["end"] or (mc_it["at"] + mc_dur),
+                            "vis_h": mc_vh,
+                            "max_sc": mc_sc,
+                            "first_clip": mc_it,
+                            "last_clip": mc_it,
+                        }
+                    )
+
+            eff_shot_count = len(effective_shots)
+            asl = duration / eff_shot_count if eff_shot_count > 0 else 0.0
+            max_shot = max((s["dur"] or 0.0) for s in effective_shots) if effective_shots else 0.0
+            speaker_eff_shots = [s for s in effective_shots if is_speaker_vid_clip(s["first_clip"])]
+            max_spk_shot = max((s["dur"] or 0.0) for s in speaker_eff_shots) if speaker_eff_shots else 0.0
             details["main_stage_shots"] = shot_count
+            details["effective_shots"] = eff_shot_count
             details["asl_sec"] = round(asl, 2)
             details["max_shot_sec"] = round(max_shot, 2)
+            details["max_speaker_shot_sec"] = round(max_spk_shot, 2)
             cut_points = [c["at"] for c in main_clips[1:] if c["at"] > 0]
 
-            asl_limit = STYLE_ASL_THRESHOLDS.get(style_slot, 7.5)
+            asl_limit = STYLE_ASL_THRESHOLDS.get(style_slot, 7.0)
             if asl > asl_limit:
-                msg = f"剪辑节奏过慢：main-stage 共 {shot_count} 镜，ASL={asl:.2f}s（{style_slot} 上限 <= {asl_limit:.1f}s），最长单镜 {max_shot:.2f}s"
-                if style_slot == "v1":
-                    hard_failures.append(msg)
-                else:
-                    warnings.append(msg)
+                hard_failures.append(
+                    f"剪辑节奏过慢：有效镜数 {eff_shot_count} 镜(原始 {shot_count} 镜)，有效 ASL={asl:.2f}s > {style_slot} 硬上限 {asl_limit:.1f}s（最长有效单镜 {max_shot:.2f}s）"
+                )
+            max_spk_limit = STYLE_MAX_SPEAKER_SHOT_SEC.get(style_slot, 8.5)
+            if max_spk_shot > max_spk_limit:
+                hard_failures.append(
+                    f"单镜口播拖沓超限 [{style_slot}]：最长连续同景别口播达 {max_spk_shot:.2f}s(> {max_spk_limit:.1f}s 硬上限)，须插入 B-roll/动态视觉舞台或做 >=1.12x 阶梯景别切换"
+                )
+            if style_slot == "v4":
+                if max_shot > 6.5:
+                    hard_failures.append(
+                        f"v4(S04 竖屏银幕散文电影) 单镜时长超限：最长有效镜头 {max_shot:.2f}s > 6.5s 硬上限"
+                    )
+                if duration >= 30.0 and eff_shot_count < 8:
+                    hard_failures.append(
+                        f"v4(S04 竖屏银幕散文电影) 镜头密度不足：全长 {duration:.1f}s 仅 {eff_shot_count} 个有效镜头(< 8 镜下限)"
+                    )
 
             fake_mid_cuts: list[str] = []
             unmasked_jump_cuts: list[str] = []
@@ -3303,19 +3418,166 @@ def audit_film_dir(
                     f"同机位删句硬蹦脸违规：非连续跳切点未加 B-roll 遮切(JL3)、视觉转场或 >=1.12x 阶梯景别差({', '.join(unmasked_jump_cuts[:4])})"
                 )
 
-        # Cross-track floating-point overlap
-        if pip_clips and main_clips:
-            fs_videos = [c for c in main_clips if c["tag"] == "video"]
-            for pc in pip_clips:
-                if pc["end"] is None:
+            # Topology sequence, anti-monotony run & S04 (v4) multi-topology essay-film gates
+            shot_topologies: list[tuple[str, str, float]] = []
+            l6_total_sec = 0.0
+            l6_speaker_sec = 0.0
+            consec_l6: list[str] = []
+            for mc_it in main_clips:
+                mc_s = mc_it["at"]
+                mc_e = mc_it["end"] if mc_it["end"] is not None else min(duration, mc_s + (mc_it["dur"] or 3.0))
+                mc_d = max(0.0, mc_e - mc_s)
+                if re.search(r"(?:outro|ending)", Path(mc_it["base_src"]).name, re.I):
                     continue
-                for fv in fs_videos:
-                    if pc["end"] > fv["at"] - 1e-6 and pc["at"] < (fv["end"] or duration):
-                        overlap_ms = (pc["end"] - fv["at"]) * 1000.0
-                        if overlap_ms >= -0.001:
-                            hard_failures.append(
-                                f"跨轨叠影穿帮风险：上轨 `{pc['id']}` 结束于 {pc['end']:.6f}s 与下轨 `{fv['id']}` 起点 {fv['at']:.2f}s 贴边/重叠(Δ={overlap_ms:+.2f}ms)，请提前 >=0.034s 收口"
-                            )
+                has_trip = any(
+                    tc["at"] < mc_e - 0.15 and (tc["end"] or (tc["at"] + 3.0)) > mc_s + 0.15
+                    for tc in triptych_clips
+                )
+                has_cut = any(
+                    cc["at"] < mc_e - 0.15 and (cc["end"] or (cc["at"] + 3.0)) > mc_s + 0.15
+                    for cc in cutout_clips
+                ) or (
+                    mc_it["tag"] == "video" and bool(re.search(r"--of-cutout\s*:\s*1\b", merged_clip_css(mc_it)))
+                )
+                if has_trip:
+                    topo = "L4_TRIPTYCH"
+                elif has_cut:
+                    topo = "PF3_CUTOUT"
+                elif mc_it["tag"] == "iframe":
+                    sf_n = Path(mc_it["base_src"]).name.lower()
+                    topo = "L4_TRIPTYCH" if "triptych" in sf_n else "L5_STAGE"
+                else:
+                    vh_cur = _clip_vis_height(mc_it)
+                    if vh_cur <= 620.0:
+                        topo = "L6_LETTERBOX"
+                        l6_total_sec += mc_d
+                        if is_speaker_vid_clip(mc_it):
+                            l6_speaker_sec += mc_d
+                    elif vh_cur <= 1280.0:
+                        topo = "L3_SPLIT"
+                    else:
+                        topo = "L1_FULL_SPEAKER" if is_speaker_vid_clip(mc_it) else "L1_FULL_BROLL"
+                if topo == "L6_LETTERBOX" and shot_topologies and shot_topologies[-1][1] == "L6_LETTERBOX":
+                    consec_l6.append(f"{shot_topologies[-1][0]}->{mc_it['id']}@{mc_s:.1f}s")
+                shot_topologies.append((mc_it["id"], topo, round(mc_d, 2)))
+
+            distinct_topos = sorted({tp for _, tp, _ in shot_topologies})
+            details["shot_topologies"] = {
+                "sequence": shot_topologies,
+                "distinct": distinct_topos,
+                "l6_ratio": round(l6_total_sec / max(1.0, duration), 3),
+                "l6_speaker_sec": round(l6_speaker_sec, 2),
+            }
+
+            # Check vignette-grade for full-film static black letterbox masks (>8.0s)
+            vig_m = re.search(r'<section[^>]*id=["\']vignette-grade["\'][^>]*>(.*?)</section>', html_txt, re.I | re.S)
+            if vig_m:
+                for vc_it in parse_clips_in_section(vig_m.group(1)):
+                    vc_d = vc_it["dur"] or ((vc_it["end"] or duration) - vc_it["at"])
+                    if vc_d > 8.0 and vc_it["tag"] == "iframe":
+                        vp_f = film_dir / vc_it["base_src"]
+                        if vp_f.is_file():
+                            vp_txt = vp_f.read_text(encoding="utf-8", errors="replace")
+                            if "letterbox" in vp_f.name.lower() or re.search(
+                                r"height\s*:\s*(?:3[89]\d|[4-9]\d\d)px[^}]*background(?:-color)?\s*:\s*#0[0-9a-fA-F]{5}",
+                                vp_txt,
+                                re.I,
+                            ):
+                                hard_failures.append(
+                                    f"严禁跨镜常驻死黑遮幅框：`vignette-grade` 挂载 `{vp_f.name}` 长达 {vc_d:.1f}s(>8.0s)，把竖屏永久焊死成上下死黑窄条！宽银幕 `L6` 仅限单镜按需使用"
+                                )
+
+            if style_slot == "v4" and duration >= 24.0:
+                if len(distinct_topos) < 3:
+                    hard_failures.append(
+                        f"v4(S04 竖屏银幕散文电影) 构图单一简陋：全片仅使用 {len(distinct_topos)} 种构图({distinct_topos})，必须组合 >=3 种空间构图(L1/PF3满屏浅景深 + L4三轨胶片三联画 + L5纯Canvas暗金光影隐喻场 + L6动态遮幅)"
+                    )
+                if "L4_TRIPTYCH" not in distinct_topos:
+                    hard_failures.append(
+                        "v4(S04 竖屏银幕散文电影) 缺失标志性 `L4` 三联画胶片格构图：全片必须包含 >=1 幕三格同步胶片三联画(如 triptych-top / main-stage / triptych-bot 三轨并置)"
+                    )
+                if duration >= 30.0 and "PF3_CUTOUT" not in distinct_topos:
+                    hard_failures.append(
+                        "v4(S04 竖屏银幕散文电影) 缺失 `PF3` 同源虚化底光学浅景深人像高潮镜"
+                    )
+                if duration >= 30.0 and "L5_STAGE" not in distinct_topos:
+                    hard_failures.append(
+                        "v4(S04 竖屏银幕散文电影) 缺失 `L5-LightField` 黑曜石纯 `<canvas>` 空间光影隐喻动效镜：严禁全片仅靠窄条视频加小字充数"
+                    )
+                if (l6_total_sec / max(1.0, duration)) > 0.32:
+                    hard_failures.append(
+                        f"v4(S04) `2.39:1` 单窄遮幅占比过高：{l6_total_sec:.1f}s/{duration:.1f}s = {l6_total_sec/duration:.0%}(> 32% 硬上限)，必须释放竖屏空间给满幅浅景深、三联画与光影场"
+                    )
+                if consec_l6:
+                    hard_failures.append(
+                        f"v4(S04) 违规连续使用单窄遮幅 `L6`({', '.join(consec_l6[:3])})：相邻两镜严禁连挂窄条黑边"
+                    )
+                if l6_speaker_sec > 4.5:
+                    hard_failures.append(
+                        f"v4(S04) 违规把常规口播长期关进 `452px` 窄条黑缝(累计 {l6_speaker_sec:.1f}s > 4.5s)：主讲人独白请改用 `L1` 满屏暗角或 `L4` 三联画中格特写"
+                    )
+
+        # Cross-track double-head overlap & atomic speaker-pip sync gates
+        if pip_clips and main_clips:
+            fs_speaker_videos = [c for c in main_clips if is_speaker_vid_clip(c)]
+            non_spk_iframes = sorted(
+                [
+                    c
+                    for c in main_clips
+                    if c["tag"] == "iframe" and not re.search(r"(?:outro|ending)", Path(c["base_src"]).name, re.I)
+                ],
+                key=lambda x: x["at"],
+            )
+            # Merge contiguous main-stage non-speaker iframes into continuous host chains
+            host_chains: list[tuple[float, float, list[dict[str, Any]]]] = []
+            for ic in non_spk_iframes:
+                ic_s = ic["at"]
+                ic_e = ic["end"] if ic["end"] is not None else min(duration, ic_s + (ic["dur"] or 4.0))
+                if host_chains and abs(ic_s - host_chains[-1][1]) <= 0.06:
+                    host_chains[-1] = (host_chains[-1][0], ic_e, [*host_chains[-1][2], ic])
+                else:
+                    host_chains.append((ic_s, ic_e, [ic]))
+
+            for pc in pip_clips:
+                pc_end_chk = pc["end"] if pc["end"] is not None else min(duration, pc["at"] + 4.0)
+                if pc.get("fade_in", 0.0) > 0.005 or pc.get("fade_out", 0.0) > 0.005:
+                    hard_failures.append(
+                        f"speaker-pip 原子同步违规：`{pc['id']}` (at={pc['at']:.2f}s) 挂载了独立 `fade=[{pc.get('fade_in',0):.2f},{pc.get('fade_out',0):.2f}]`，必然造成人物头像先于白板页面提前消失或滞后浮现！请删掉 speaker-pip 的 `overrides` `fade`，跨场叠化统一由顶层 `fx-transitions` 整幅同步控制"
+                    )
+                for fv in fs_speaker_videos:
+                    fv_end = fv["end"] if fv["end"] is not None else duration
+                    ov_sec = min(pc_end_chk, fv_end) - max(pc["at"], fv["at"])
+                    if ov_sec > 1e-4:
+                        hard_failures.append(
+                            f"跨轨双头叠影穿帮：上轨 `{pc['id']}` [{pc['at']:.3f}s, {pc_end_chk:.3f}s) 与下轨同主体口播 `{fv['id']}` [{fv['at']:.3f}s, {fv_end:.3f}s) 真实重叠 {ov_sec*1000:.1f}ms，请将上轨结束时间精确设为 `{fv['at'] - 0.001:.3f}s`（切点减 1ms 消除浮点尾差，严禁提前 >=0.1s 收口留空框）"
+                        )
+
+                # Host-scene atomic start/end lock check (<= 0.030s tolerance)
+                matched_chain = next(
+                    (
+                        ch
+                        for ch in host_chains
+                        if min(pc_end_chk, ch[1]) - max(pc["at"], ch[0]) > 0.15
+                    ),
+                    None,
+                )
+                if matched_chain is None:
+                    hard_failures.append(
+                        f"speaker-pip 无效悬空：`{pc['id']}` [{pc['at']:.2f}s..{pc_end_chk:.2f}s] 未对齐任何底层 `main-stage` 图解/白板场景"
+                    )
+                else:
+                    ch_s, ch_e, ch_clips = matched_chain
+                    # Allow matching either the full contiguous host chain OR an exact contiguous sub-slice of scenes in the chain
+                    valid_starts = [ch_s] + [sc_i["at"] for sc_i in ch_clips]
+                    valid_ends = [ch_e] + [
+                        (sc_i["end"] if sc_i["end"] is not None else ch_e) for sc_i in ch_clips
+                    ]
+                    ds_min = min(abs(pc["at"] - vs) for vs in valid_starts)
+                    de_min = min(abs(pc_end_chk - ve) for ve in valid_ends)
+                    if ds_min > 0.030 or de_min > 0.030:
+                        hard_failures.append(
+                            f"speaker-pip 起止脱节早退/晚出：`{pc['id']}` [{pc['at']:.3f}s, {pc_end_chk:.3f}s) 与底层宿主场景边界(起点候选 {[round(v,2) for v in valid_starts]}, 终点候选 {[round(v,2) for v in valid_ends]}) 偏差 Δstart={ds_min:.3f}s / Δend={de_min:.3f}s (> 0.030s)！挂件必须与宿主页面 100% 同帧进退(连续白板页建议一条连续 `<video>` 贯通，切出点填 `host_end - 0.001`)"
+                        )
 
         # 4. Speaker-PiP framing checks
         pip_heights: set[int] = set()
@@ -3323,7 +3585,9 @@ def audit_film_dir(
         src_ar_cache: dict[str, float] = {}
         for pc in pip_clips:
             pc_end = pc["end"] if pc["end"] is not None else min(duration, pc["at"] + 4.0)
-            pip_points.append(round((pc["at"] + pc_end) / 2.0, 2))
+            for pt_cand in (pc["at"] + 0.05, (pc["at"] + pc_end) * 0.5, pc_end - 0.05):
+                if 0.05 < pt_cand < (duration - 0.05):
+                    pip_points.append(round(pt_cand, 2))
             merged_pip_css = merged_clip_css(pc)
             box_l = parse_css_px(merged_pip_css, "left", 0.0) or 0.0
             box_t = parse_css_px(merged_pip_css, "top", 0.0) or 0.0
@@ -3389,16 +3653,16 @@ def audit_film_dir(
                     sf_path = film_dir / mc["base_src"]
                     if sf_path.is_file():
                         sf_txt = sf_path.read_text(encoding="utf-8", errors="replace")
-                        pf_m = re.search(r"\.pip-frame\s*\{([^}]*)\}", sf_txt, flags=re.IGNORECASE)
-                        if pf_m and "pip-frame" in sf_txt[sf_txt.find("<body") :]:
-                            pf_css = pf_m.group(1)
-                            pf_t = parse_css_px(pf_css, "top")
-                            pf_h = parse_css_px(pf_css, "height")
-                            if pf_t is not None and pf_h is not None:
-                                if abs((pf_t + pf_h) - (vis_t + vis_h)) > 16.0 or abs(pf_t - vis_t) > 16.0:
-                                    pip_issues.append(
-                                        f"与 `{sf_path.name}` 内 `.pip-frame` 纵向错位 >16px"
-                                    )
+                        sf_body = sf_txt[sf_txt.lower().find("<body") :] if "<body" in sf_txt.lower() else sf_txt
+                        orphan_shell_m = re.search(
+                            r'class=["\'][^"\']*\b(badge-ring|pip-ring|pip-frame|avatar-ring|pip-border|speaker-ring)\b',
+                            sf_body,
+                            flags=re.IGNORECASE,
+                        )
+                        if orphan_shell_m:
+                            pip_issues.append(
+                                f"底层 `{sf_path.name}` 违规绘制静态外框 `.{orphan_shell_m.group(1)}`(运镜平移必框人分离且切场易留空圈)，边框/圆角/投影必须 100% 写在 `film.html` 的 `<video>` 自身上"
+                            )
 
             if (vis_w / vis_h) > 1.85 and u2 > 0.64 and "wide_pip_warned" not in details:
                 details["wide_pip_warned"] = True
@@ -3687,7 +3951,7 @@ def audit_film_dir(
                 if fp_img.is_file() and bn not in supplemental_files:
                     supplemental_files[bn] = (fp_img, "image", 0.0, 0.0, 1080.0, 1920.0, 1.0)
 
-        for vc in main_clips:
+        for vc in (main_clips + aux_visual_clips):
             if vc["tag"] != "video":
                 continue
             bn = Path(vc["base_src"]).name.lower()
@@ -3994,6 +4258,33 @@ def audit_film_dir(
                     f"静态纯文字场景占比偏高（{len(text_only_scenes)}/{denom} = {text_only_ratio:.0%} > 25%）"
                 )
 
+        if style_slot == "v4" and scenes_dir.exists():
+            v4_max_fs = 0
+            v4_card_scenes: list[str] = []
+            for sf_v4 in sorted(scenes_dir.glob("*.html")):
+                if sf_v4.name == "subtitles.html" or helper_scene_re.match(sf_v4.name):
+                    continue
+                t_v4 = sf_v4.read_text(encoding="utf-8", errors="replace")
+                fs_v4 = [int(x) for x in re.findall(r"font-size\s*:\s*(\d+)px", t_v4)]
+                if fs_v4:
+                    v4_max_fs = max(v4_max_fs, max(fs_v4))
+                bx_v4 = inspect_boxless_scene(sf_v4, film_dir)
+                b_v4 = t_v4[t_v4.lower().find("<body") :] if "<body" in t_v4.lower() else t_v4
+                bordered_cards = len(
+                    re.findall(r"border-radius\s*:\s*(?:[89]|[1-3]\d)px", t_v4, re.I)
+                )
+                if bx_v4["content_rects"] >= 3 or bordered_cards >= 3:
+                    v4_card_scenes.append(sf_v4.name)
+            details["v4_max_scene_font_px"] = v4_max_fs
+            if duration >= 24.0 and v4_max_fs < 68:
+                hard_failures.append(
+                    f"v4(S04 竖屏银幕散文电影) 排印字号过小：场景最大字号仅 {v4_max_fs}px(< 68px 银幕主标题下限)，严禁全片用 40-48px 小字飘在黑边里，须构建三层极差胶片暗房光晕(KT3 Halation 68-104px)主论断"
+                )
+            if v4_card_scenes:
+                hard_failures.append(
+                    f"v4(G4老郑AI经营论·S04) 违规混入圆角 UI 卡片/SVG 方框图表(`{', '.join(v4_card_scenes[:3])}`)：S04 仅允许纯 `<canvas>` 光影粒子空间场与无框衬线排印"
+                )
+
         if bottom_traps:
             hard_failures.append(
                 f"界面元素掉入底部 360px 平台遮挡死区(y>=1540px): {', '.join(bottom_traps[:6])}"
@@ -4129,12 +4420,303 @@ def _parse_rgb_avg(color_expr: str) -> float | None:
     return None
 
 
+_FACE_MODELS_SINGLETON: tuple[Any, Any] | None = None
+
+
+def _get_face_models() -> tuple[Any, Any] | None:
+    """Lazy-load offline YuNet + OpenFilm 478-point 3D FaceMesh TFLite without external downloads."""
+    global _FACE_MODELS_SINGLETON
+    if _FACE_MODELS_SINGLETON is not None:
+        return _FACE_MODELS_SINGLETON
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+
+        svp_root = Path(os.environ.get("SVP_ROOT", Path(__file__).resolve().parents[4]))
+        yunet_p = svp_root / ".local" / "rea-video" / "models" / "face_detection_yunet_2023mar.onnx"
+        task_p = svp_root / "node_modules" / "openfilm" / "models" / "vision" / "face.task"
+        if not yunet_p.is_file() or not task_p.is_file():
+            return None
+        yunet = cv2.FaceDetectorYN.create(str(yunet_p), "", (640, 360), 0.52, 0.3, 5000)
+        with zipfile.ZipFile(task_p, "r") as zf:
+            buf = zf.read("face_landmarks_detector.tflite")
+        mesh_net = cv2.dnn.readNetFromTFLite(np.frombuffer(buf, dtype=np.uint8))
+        _FACE_MODELS_SINGLETON = (yunet, mesh_net)
+        return _FACE_MODELS_SINGLETON
+    except Exception:
+        return None
+
+
+def evaluate_portrait_bgr(bgr: Any, min_sym_override: float | None = None) -> dict[str, Any] | None:
+    """Evaluate 3D facial pose (yaw/roll/pitch), iris gaze, eye openness, and lip naturalness on a BGR image."""
+    models = _get_face_models()
+    if models is None or bgr is None:
+        return None
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
+
+    yunet, mesh_net = models
+    h, w = bgr.shape[:2]
+    if h < 80 or w < 80:
+        return None
+    det_w = min(960, w)
+    det_h = max(120, int(round(h * det_w / max(1, w))))
+    small = cv2.resize(bgr, (det_w, det_h)) if (det_w, det_h) != (w, h) else bgr
+    yunet.setInputSize((det_w, det_h))
+    _, faces = yunet.detect(small)
+    if faces is None or len(faces) == 0:
+        return {"has_face": False}
+
+    f = max(faces, key=lambda r: float(r[2]) * float(r[3]))
+    sx, sy = w / float(det_w), h / float(det_h)
+    fx, fy, fw, fh = float(f[0]) * sx, float(f[1]) * sy, float(f[2]) * sx, float(f[3]) * sy
+    re_x, re_y, le_x, le_y = float(f[4]) * sx, float(f[5]) * sy, float(f[6]) * sx, float(f[7]) * sy
+    coarse_roll = float(np.degrees(np.arctan2(le_y - re_y, le_x - re_x)))
+    cx, cy = fx + fw * 0.5, fy + fh * 0.5
+    box = max(fw, fh) * 1.45
+    # OpenCV getRotationMatrix2D(angle > 0) rotates CCW (upward in y-down coords).
+    # When le_y > re_y (coarse_roll > 0), rotating CCW by +coarse_roll levels the eyes!
+    rot_m = cv2.getRotationMatrix2D((cx, cy), coarse_roll, 256.0 / max(1.0, box))
+    rot_m[0, 2] += 128.0 - cx
+    rot_m[1, 2] += 128.0 - cy
+    aligned = cv2.warpAffine(bgr, rot_m, (256, 256), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    mesh_net.setInput(np.transpose(rgb, (2, 0, 1))[None, ...])
+    presence = float(mesh_net.forward("Identity_1").ravel()[0])
+    pts = mesh_net.forward("Identity").reshape(-1, 3)
+
+    # Map key landmarks back to original image pixels for true unwarped roll & crop box
+    inv_m = cv2.invertAffineTransform(rot_m)
+    ones = np.ones((pts.shape[0], 1), dtype=np.float32)
+    pts_orig = (np.hstack([pts[:, :2], ones]) @ inv_m.T)
+    true_roll = float(
+        np.degrees(np.arctan2(pts_orig[263, 1] - pts_orig[33, 1], pts_orig[263, 0] - pts_orig[33, 0]))
+    )
+
+    # Re-level 2D landmarks by any residual roll in aligned space so symmetry is 100% roll-invariant
+    res_rad = -float(np.arctan2(pts[263, 1] - pts[33, 1], pts[263, 0] - pts[33, 0]))
+    cos_r, sin_r = math.cos(res_rad), math.sin(res_rad)
+    p2 = pts[:, :2] - 128.0
+    p_lvl = np.stack([p2[:, 0] * cos_r - p2[:, 1] * sin_r, p2[:, 0] * sin_r + p2[:, 1] * cos_r], axis=1) + 128.0
+
+    wl = float(p_lvl[168, 0] - p_lvl[234, 0])
+    wr = float(p_lvl[454, 0] - p_lvl[168, 0])
+    cheek_sym = (min(wl, wr) / max(wl, wr)) if (wl > 2.0 and wr > 2.0) else 0.0
+    pitch_ratio = float(
+        (p_lvl[1, 1] - 0.5 * (p_lvl[33, 1] + p_lvl[263, 1])) / max(1e-4, p_lvl[152, 1] - p_lvl[10, 1])
+    )
+
+    def _ear(po: int, pi: int, u1: int, l1: int, u2: int, l2: int) -> float:
+        hz = float(np.linalg.norm(p_lvl[po] - p_lvl[pi]))
+        vt = 0.5 * (
+            float(np.linalg.norm(p_lvl[u1] - p_lvl[l1])) + float(np.linalg.norm(p_lvl[u2] - p_lvl[l2]))
+        )
+        return vt / max(1e-4, hz)
+
+    ear_r = _ear(33, 133, 159, 145, 158, 153)
+    ear_l = _ear(263, 362, 386, 374, 385, 380)
+    min_ear = min(ear_r, ear_l)
+    ear_asym = abs(ear_r - ear_l) / max(1e-4, max(ear_r, ear_l))
+
+    # Iris gaze horizontal & vertical ratios (anatomical direct-camera center is ~0.525 due to medial tear duct)
+    gx_r = (p_lvl[468, 0] - p_lvl[33, 0]) / max(1e-4, p_lvl[133, 0] - p_lvl[33, 0])
+    gx_l = (p_lvl[473, 0] - p_lvl[362, 0]) / max(1e-4, p_lvl[263, 0] - p_lvl[362, 0])
+    gaze_x = float(0.5 * (gx_r + gx_l))
+    gy_r = (p_lvl[468, 1] - 0.5 * (p_lvl[159, 1] + p_lvl[158, 1])) / max(
+        1e-4, 0.5 * (p_lvl[145, 1] + p_lvl[153, 1]) - 0.5 * (p_lvl[159, 1] + p_lvl[158, 1])
+    )
+    gy_l = (p_lvl[473, 1] - 0.5 * (p_lvl[386, 1] + p_lvl[385, 1])) / max(
+        1e-4, 0.5 * (p_lvl[374, 1] + p_lvl[380, 1]) - 0.5 * (p_lvl[386, 1] + p_lvl[385, 1])
+    )
+    gaze_y = float(0.5 * (gy_r + gy_l))
+
+    # Glasses glare check inside eye boxes on aligned gray
+    gray_al = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
+    glare_ratios: list[float] = []
+    for e_idxs in ([33, 133, 159, 145], [362, 263, 386, 374]):
+        ex1 = max(0, int(np.min(pts[e_idxs, 0])) - 2)
+        ex2 = min(255, int(np.max(pts[e_idxs, 0])) + 2)
+        ey1 = max(0, int(np.min(pts[e_idxs, 1])) - 2)
+        ey2 = min(255, int(np.max(pts[e_idxs, 1])) + 2)
+        epatch = gray_al[ey1 : ey2 + 1, ex1 : ex2 + 1]
+        if epatch.size > 0:
+            glare_ratios.append(float(np.mean(epatch > 245)))
+    glare_ratio = max(glare_ratios) if glare_ratios else 0.0
+
+    # Mouth comfort-zone metrics (catches both wide-open lower teeth AND swallowed/pursed/pouted grimaces)
+    mw = float(np.linalg.norm(p_lvl[291] - p_lvl[61]))
+    iod = float(np.linalg.norm(p_lvl[263] - p_lvl[33]))
+    mar_inner = float(np.linalg.norm(p_lvl[14] - p_lvl[13]) / max(1e-4, mw))
+    lip_fullness = float(np.linalg.norm(p_lvl[17] - p_lvl[0]) / max(1e-4, mw))
+    mouth_width_ratio = float(mw / max(1e-4, iod))
+    corner_asym = float(abs((p_lvl[61, 1] - p_lvl[0, 1]) - (p_lvl[291, 1] - p_lvl[0, 1])) / max(1e-4, mw))
+
+    # Sharpness on central face oval
+    f_patch = cv2.resize(gray_al[40:216, 48:208], (128, 128))
+    sharpness = float(cv2.Laplacian(f_patch, cv2.CV_64F).var())
+
+    # Chin/lower-cheek hand occlusion check via YCrCb skin intrusion below chin line
+    ycrcb = cv2.cvtColor(aligned, cv2.COLOR_BGR2YCrCb)
+    nose_patch = ycrcb[116:142, 116:142]
+    y_med = float(np.median(nose_patch[:, :, 0]))
+    cr_med = float(np.median(nose_patch[:, :, 1]))
+    cb_med = float(np.median(nose_patch[:, :, 2]))
+    chin_y = min(236, max(170, int(round(pts[152, 1]))))
+    guard_band = ycrcb[min(250, chin_y + 8) : 254, 24:232]
+    hand_intrusion = 0.0
+    if guard_band.size > 0:
+        skin_mask = (np.abs(guard_band[:, :, 1].astype(np.float32) - cr_med) < 14.0) & (
+            np.abs(guard_band[:, :, 2].astype(np.float32) - cb_med) < 14.0
+        )
+        # Neck sits in central x=88..168; raised hand enters outer left/right lower corners x<78 or x>178!
+        outer_skin = np.concatenate([skin_mask[:, :54], skin_mask[:, -54:]], axis=1)
+        hand_intrusion = float(np.mean(outer_skin))
+    # Also detect foreground raised hand outside the ears (offset 28px past zygomatic cheek landmarks 234/454)
+    rc_lim = max(0, int(round(pts[234, 0])) - 28)
+    lc_lim = min(256, int(round(pts[454, 0])) + 28)
+    for cx1, cx2 in ((0, rc_lim), (lc_lim, 256)):
+        if cx2 - cx1 >= 28:
+            cband = ycrcb[84:174, cx1:cx2]
+            if cband.size > 0:
+                c_sk = (
+                    (np.abs(cband[:, :, 0].astype(np.float32) - y_med) < 30.0)
+                    & (np.abs(cband[:, :, 1].astype(np.float32) - cr_med) < 11.5)
+                    & (np.abs(cband[:, :, 2].astype(np.float32) - cb_med) < 11.5)
+                )
+                hand_intrusion = max(hand_intrusion, float(np.mean(c_sk)))
+
+    req_sym = min_sym_override if min_sym_override is not None else 0.56
+    vetoes: list[str] = []
+    if cheek_sym < req_sym:
+        vetoes.append(f"侧脸偏转未正对镜头(cheek_sym={cheek_sym:.3f} < {req_sym:.2f})")
+    if abs(true_roll) > 10.0:
+        vetoes.append(f"歪头倾角过大(roll={true_roll:+.1f}° > ±10.0°)")
+    if not (0.185 <= pitch_ratio <= 0.285):
+        vetoes.append(f"俯仰角异常(pitch={pitch_ratio:.3f})")
+    if min_ear < 0.180:
+        vetoes.append(f"半闭眼/眨眼瞬间(min_ear={min_ear:.3f} < 0.180)")
+    if ear_asym > 0.260:
+        vetoes.append(f"大小眼/斜睨抽动(ear_asym={ear_asym:.2f} > 0.260)")
+    if abs(gaze_x - 0.530) > 0.075:
+        vetoes.append(f"眼神斜瞟场外未看镜头(gaze_x={gaze_x:.3f} 偏离正视带[0.455..0.605])")
+    if not (0.28 <= gaze_y <= 0.58):
+        vetoes.append(f"眼球下垂念稿或上翻(gaze_y={gaze_y:.3f})")
+    if glare_ratio > 0.09:
+        vetoes.append(f"镜片强反光遮瞳(glare={glare_ratio:.1%})")
+    if mar_inner > 0.180:
+        vetoes.append(f"张嘴过大露齿过渡态(mar={mar_inner:.3f} > 0.180)")
+    if lip_fullness < 0.44:
+        vetoes.append(f"句间吞咽内卷抿嘴/憋笑瘪嘴(lip_fullness={lip_fullness:.3f} < 0.44)")
+    if mouth_width_ratio < 0.40:
+        vetoes.append(f"辅音前撅吹哨嘟嘴(mouth_width={mouth_width_ratio:.3f} < 0.40)")
+    if corner_asym > 0.085:
+        vetoes.append(f"单侧歪嘴抽动(corner_asym={corner_asym:.3f} > 0.085)")
+    if hand_intrusion > 0.24:
+        vetoes.append(f"下巴两侧挥手残影入镜(hand_intrusion={hand_intrusion:.2f})")
+
+    # Composite portrait aesthetics score [0..100]
+    s_pose = (
+        max(0.0, min(1.0, (cheek_sym - 0.35) / 0.55)) * 0.65
+        + max(0.0, 1.0 - abs(true_roll) / 10.0) * 0.25
+        + max(0.0, 1.0 - abs(pitch_ratio - 0.235) / 0.055) * 0.10
+    )
+    s_eye = (
+        max(0.0, min(1.0, (min_ear - 0.16) / 0.08)) * 0.40
+        + max(0.0, 1.0 - abs(gaze_x - 0.525) / 0.085) * 0.40
+        + max(0.0, 1.0 - ear_asym / 0.28) * 0.20
+    )
+    # Ideal mouth: relaxed closed or gentle micro-smile (mar 0.00..0.09, lip_fullness ~0.53)
+    s_mar = 1.0 if mar_inner <= 0.075 else max(0.0, 1.0 - (mar_inner - 0.075) / 0.095)
+    s_lip = max(0.0, 1.0 - abs(lip_fullness - 0.535) / 0.14)
+    s_mouth = s_mar * 0.45 + s_lip * 0.35 + max(0.0, 1.0 - corner_asym / 0.09) * 0.20
+    s_clean = max(0.0, min(1.0, sharpness / 95.0)) * 0.70 + max(0.0, 1.0 - hand_intrusion / 0.25) * 0.30
+    total_score = round((0.36 * s_pose + 0.26 * s_eye + 0.25 * s_mouth + 0.13 * s_clean) * 100.0, 2)
+
+    return {
+        "has_face": True,
+        "presence": round(presence, 2),
+        "face_box_px": [round(fx), round(fy), round(fw), round(fh)],
+        "cheek_sym": round(cheek_sym, 3),
+        "roll_deg": round(true_roll, 2),
+        "pitch_ratio": round(pitch_ratio, 3),
+        "min_ear": round(min_ear, 3),
+        "ear_asym": round(ear_asym, 3),
+        "gaze_x": round(gaze_x, 3),
+        "gaze_y": round(gaze_y, 3),
+        "glare_ratio": round(glare_ratio, 3),
+        "mar_inner": round(mar_inner, 3),
+        "lip_fullness": round(lip_fullness, 3),
+        "mouth_width_ratio": round(mouth_width_ratio, 3),
+        "corner_asym": round(corner_asym, 3),
+        "sharpness_lap": round(sharpness, 1),
+        "hand_intrusion": round(hand_intrusion, 3),
+        "score": total_score,
+        "vetoes": vetoes,
+        "passed": len(vetoes) == 0,
+    }
+
+
+def _crop_face_zoom_tile(bgr: Any, meta: dict[str, Any], label: str, tile_w: int = 420, tile_h: int = 480) -> Any:
+    """Render a 1:1 / 1.65x head-and-shoulders inspection tile with metric overlay."""
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
+
+    h, w = bgr.shape[:2]
+    if meta.get("has_face") and meta.get("face_box_px"):
+        fx, fy, fw, fh = meta["face_box_px"]
+        cx = fx + fw * 0.5
+        cy = fy + fh * 0.48
+        crop_h = max(160.0, fh * 1.85)
+        crop_w = crop_h * (tile_w / float(tile_h))
+        x1 = int(round(max(0.0, min(w - crop_w, cx - crop_w * 0.5))))
+        y1 = int(round(max(0.0, min(h - crop_h, cy - crop_h * 0.46))))
+        x2 = min(w, int(round(x1 + crop_w)))
+        y2 = min(h, int(round(y1 + crop_h)))
+        patch = bgr[y1:y2, x1:x2]
+    else:
+        patch = bgr
+    tile = cv2.resize(patch, (tile_w, tile_h), interpolation=cv2.INTER_AREA) if patch.size > 0 else np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
+    # Draw semi-transparent bottom HUD bar
+    bar = tile[tile_h - 86 : tile_h, :].astype(np.float32) * 0.26
+    tile[tile_h - 86 : tile_h, :] = bar.astype(np.uint8)
+    ok_col = (90, 235, 130) if meta.get("passed") else (70, 90, 255)
+    cv2.rectangle(tile, (2, 2), (tile_w - 3, tile_h - 3), ok_col, 3)
+    cv2.putText(tile, label[:30], (12, tile_h - 54), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (255, 255, 255), 2, cv2.LINE_AA)
+    if meta.get("has_face"):
+        m1 = f"S={meta['score']:.1f} sym={meta['cheek_sym']:.2f} roll={meta['roll_deg']:+.1f}d"
+        m2 = f"ear={meta['min_ear']:.2f} gx={meta['gaze_x']:.2f} mar={meta['mar_inner']:.2f} lip={meta['lip_fullness']:.2f}"
+        cv2.putText(tile, m1, (12, tile_h - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.46, ok_col, 1, cv2.LINE_AA)
+        cv2.putText(tile, m2, (12, tile_h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (220, 230, 240), 1, cv2.LINE_AA)
+    return tile
+
+
+def _resolve_adaptive_cover_min_sym(slot_root: Path) -> float:
+    """Read adaptive min_sym from E0/slot cover-frame-pool.json if available; default 0.56."""
+    cands = [
+        slot_root / "materials" / "covers" / "cover-frame-pool.json",
+        slot_root.parent / "master-assets" / "cover-candidates" / "cover-frame-pool.json",
+        slot_root.parent.parent / "master-assets" / "cover-candidates" / "cover-frame-pool.json",
+        slot_root.parent / "master-assets" / "cover-frame-pool.json",
+        slot_root.parent.parent / "master-assets" / "cover-frame-pool.json",
+    ]
+    for cp in cands:
+        if cp.is_file():
+            try:
+                jd = json.loads(cp.read_text(encoding="utf-8"))
+                if jd.get("audit_min_cheek_sym") is not None:
+                    return float(jd["audit_min_cheek_sym"])
+            except Exception:
+                pass
+    return 0.56
+
+
 def audit_covers(
     covers_dir: Path,
     slot_root: Path,
     hard_failures: list[str],
     warnings: list[str],
     style_slot: str = "default",
+    face_sheet_out: Path | None = None,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "covers_dir": rel_path(covers_dir),
@@ -4200,15 +4782,17 @@ def audit_covers(
         except Exception:
             pass
 
-    # Search candidate materials/covers directories for contact-sheet & HTML templates
+    # Search candidate materials/covers & master-assets/cover-candidates for contact-sheet / face-zoom-sheet
     mat_dirs = [
         slot_root / "materials" / "covers",
         slot_root.parent / "materials" / "covers",
+        slot_root.parent / "master-assets" / "cover-candidates",
+        slot_root.parent.parent / "master-assets" / "cover-candidates",
         slot_root.parent.parent / "master" / "materials" / "covers",
         slot_root.parent.parent / "materials" / "covers",
     ]
     for md in mat_dirs:
-        if md.is_dir() and list(md.glob("*contact*sheet*.*")):
+        if md.is_dir() and (list(md.glob("*contact*sheet*.*")) or list(md.glob("*face-zoom-sheet*.*"))):
             has_contact_sheet = True
 
     report["has_contact_sheet"] = has_contact_sheet
@@ -4353,6 +4937,38 @@ def audit_covers(
                 f"亮底裸抠像脏边缺陷 `{hf.name}`：浅色背景(RGB均值 {body_bg_avg:.0f} > 185)违规直接贴透明抠像 PNG，须改用矩形胶片相框实拍裁切"
             )
 
+    # 3D FaceMesh CV Portrait Aesthetics Gate on rendered cover PNGs + 1:1 closeup sheet
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+
+        min_sym_req = _resolve_adaptive_cover_min_sym(slot_root)
+        portrait_checks: dict[str, Any] = {}
+        zoom_tiles: list[Any] = []
+        for pf in png_files:
+            bgr_cov = cv2.imread(str(pf))
+            if bgr_cov is None:
+                continue
+            f_meta = evaluate_portrait_bgr(bgr_cov, min_sym_override=min_sym_req)
+            if f_meta is None:
+                continue
+            portrait_checks[pf.name] = f_meta
+            if f_meta.get("has_face"):
+                zoom_tiles.append(_crop_face_zoom_tile(bgr_cov, f_meta, pf.stem))
+                if not f_meta["passed"]:
+                    hard_failures.append(
+                        f"封面人物面庞神态违规 `{pf.name}`(得分 {f_meta['score']:.1f})：{'；'.join(f_meta['vetoes'])} —— 必须运行 `qc_video.py select-cover-frames` 选用正对镜头、端正平视、口唇自然舒展的高分帧"
+                    )
+        if portrait_checks:
+            report["portrait_cv_checks"] = portrait_checks
+        if zoom_tiles and face_sheet_out is not None:
+            face_sheet_out.parent.mkdir(parents=True, exist_ok=True)
+            sheet_img = np.hstack(zoom_tiles) if len(zoom_tiles) > 1 else zoom_tiles[0]
+            cv2.imwrite(str(face_sheet_out), sheet_img)
+            report["cover_faces_sheet"] = rel_path(face_sheet_out)
+    except Exception:
+        pass
+
     return report
 
 
@@ -4487,15 +5103,23 @@ def audit_rendered_frames_pixels(
     hard_failures: list[str],
     warnings: list[str],
 ) -> dict[str, Any]:
-    """Pixel-level scan on sampled rendered frames for split-screen dead black voids and top status-bar intrusions."""
-    if duration < 3.0 or style_slot == "v4":
-        return {"skipped": True, "reason": "v4_cinema_or_short"}
+    """Full-film 1fps streaming pixel scan (including v4!) + L3 void/topbar + PiP 50ms head/tail pixel liveness."""
+    if duration < 3.0:
+        return {"skipped": True, "reason": "too_short"}
 
-    # Collect transition windows & L3 split-video midpoints from film.html
     tr_windows: list[tuple[float, float]] = []
     l3_midpoints: list[float] = []
+    pip_liveness_targets: list[tuple[str, float, list[int]]] = []
     if film_dir and (film_dir / "film.html").is_file():
         ht = (film_dir / "film.html").read_text(encoding="utf-8", errors="replace")
+        css_rules_p: dict[str, str] = {}
+        kf_map_p: dict[str, str] = {}
+        for sb_p in re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", ht, flags=re.I):
+            kf_map_p.update(extract_keyframes_blocks(sb_p))
+            sb_cl = re.sub(r"@keyframes\s+[A-Za-z0-9_-]+\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", sb_p, flags=re.I)
+            for cm_p in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", sb_cl):
+                css_rules_p[cm_p.group(1)] = css_rules_p.get(cm_p.group(1), "") + ";" + cm_p.group(2)
+
         for tm in re.finditer(
             r'<section[^>]*id=["\'][^"\']*(?:transition|fx-trans)[^"\']*["\'][^>]*>(.*?)</section>',
             ht,
@@ -4504,7 +5128,7 @@ def audit_rendered_frames_pixels(
             for tc in parse_clips_in_section(tm.group(1)):
                 t_s = tc["at"]
                 t_e = tc["end"] if tc["end"] is not None else (t_s + 0.6)
-                tr_windows.append((t_s - 0.15, t_e + 0.15))
+                tr_windows.append((t_s - 0.12, t_e + 0.12))
         ms_m = re.search(r'<section[^>]*id=["\']main-stage["\'][^>]*>(.*?)</section>', ht, flags=re.I | re.S)
         if ms_m:
             for mc in parse_clips_in_section(ms_m.group(1)):
@@ -4513,93 +5137,123 @@ def audit_rendered_frames_pixels(
                     if vh_px is not None and vh_px <= 960.0:
                         mc_e = mc["end"] if mc["end"] is not None else (mc["at"] + (mc["dur"] or 2.5))
                         l3_midpoints.append(round((mc["at"] + mc_e) * 0.5, 2))
+        pip_m_p = re.search(r'<section[^>]*id=["\']speaker-pip["\'][^>]*>(.*?)</section>', ht, flags=re.I | re.S)
+        if pip_m_p:
+            for pc_p in parse_clips_in_section(pip_m_p.group(1)):
+                pc_e = pc_p["end"] if pc_p["end"] is not None else min(duration, pc_p["at"] + 3.0)
+                m_css_p = ";".join([css_rules_p.get(c, "") for c in pc_p.get("classes", [])] + [pc_p.get("style", "")])
+                bl = parse_css_px(m_css_p, "left", 0.0) or 0.0
+                bt = parse_css_px(m_css_p, "top", 0.0) or 0.0
+                bw = parse_css_px(m_css_p, "width", 1080.0) or 1080.0
+                bh = parse_css_px(m_css_p, "height", 1920.0) or 1920.0
+                it, ir, ib, il = resolve_pip_steady_inset(m_css_p, kf_map_p, bw, bh)
+                vbox = [int(round(bl + il)), int(round(bt + it)), int(round(max(24.0, bw - il - ir))), int(round(max(24.0, bh - it - ib)))]
+                for t_edge, lbl_edge in ((pc_p["at"] + 0.05, "head+50ms"), (pc_e - 0.05, "tail-50ms")):
+                    if 0.06 < t_edge < (duration - 0.06) and not any(ws <= t_edge <= we for ws, we in tr_windows):
+                        pip_liveness_targets.append((f"{pc_p['id']}({lbl_edge})", round(t_edge, 3), vbox))
 
-    raw_ts = [
-        min(1.6, max(0.3, duration * 0.06)),
-        duration * 0.22,
-        duration * 0.38,
-        duration * 0.54,
-        duration * 0.70,
-        max(0.4, duration - 2.2),
-        *l3_midpoints[:4],
-    ]
-    dedup_ts: list[float] = []
-    for t in sorted(raw_ts):
-        if 0.2 < t < max(0.3, duration - 1.2) and not any(ws <= t <= we for ws, we in tr_windows):
-            if not dedup_ts or (t - dedup_ts[-1]) >= 0.45:
-                dedup_ts.append(round(t, 2))
-    sample_ts = dedup_ts[:8]
-    if not sample_ts:
-        return {"skipped": True, "reason": "no_sample_points"}
-
-    sw, sh = 270, 480
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-    for t_s in sample_ts:
-        cmd += ["-ss", f"{t_s:.2f}", "-i", str(video)]
-    vf_parts = [f"[{i}:v]scale={sw}:{sh},format=gray[g{i}]" for i in range(len(sample_ts))]
-    if len(sample_ts) == 1:
-        g_map = "[g0]"
-    else:
-        vf_parts.append(f"{''.join(f'[g{i}]' for i in range(len(sample_ts)))}vstack=inputs={len(sample_ts)}[gout]")
-        g_map = "[gout]"
-    cmd += ["-filter_complex", ";".join(vf_parts), "-map", g_map, "-frames:v", "1", "-f", "rawvideo", "-"]
-    proc = run_cmd_bytes(cmd)
+    # 1) Single-pass 1fps streaming grayscale scan at 180x320 across ALL slots (including v4!)
+    sw, sh = 180, 320
     f_sz = sw * sh
+    stream_cmd = [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video),
+        "-vf",
+        f"fps=1,scale={sw}:{sh},format=gray",
+        "-f",
+        "rawvideo",
+        "-",
+    ]
+    proc = run_cmd_bytes(stream_cmd)
     if proc.returncode != 0 or len(proc.stdout) < f_sz:
         return {"skipped": True, "reason": "decode_failed"}
 
+    n_secs = max(1, min(int(math.ceil(duration)), len(proc.stdout) // f_sz))
+    effective_n = max(1, n_secs - 2)  # Exclude last 2s outro fade-to-black
     void_hits: list[str] = []
     topbar_hits: list[str] = []
-    frame_metrics: list[dict[str, Any]] = []
-    n_avail = min(len(sample_ts), len(proc.stdout) // f_sz)
+    letterbox_secs: list[int] = []
+    black_ratios: list[float] = []
+    cur_lb_run = 0
+    max_lb_run = 0
 
-    for idx in range(n_avail):
-        t_val = sample_ts[idx]
-        buf = proc.stdout[idx * f_sz : (idx + 1) * f_sz]
-        # Row bands at 1/4 scale (1 row = 4px on 1080x1920):
-        # top_bar: y=0..136px -> rows 0..34
-        # upper_stage: y=188..840px -> rows 47..210 (L3 top video lives in y=180..860px)
-        # lower_stage: y=880..1300px -> rows 220..325 (420px narrative zone BELOW L3 video & ABOVE subtitles!)
-        top_px = buf[0 : 34 * sw]
-        upper_px = buf[47 * sw : 210 * sw]
-        lower_px = buf[220 * sw : 325 * sw]
+    for sec_i in range(effective_n):
+        t_val = sec_i + 0.5
+        if any(ws <= t_val <= we for ws, we in tr_windows):
+            cur_lb_run = 0
+            continue
+        buf = proc.stdout[sec_i * f_sz : (sec_i + 1) * f_sz]
+        # At 180x320 (1 row = 6px on 1080x1920):
+        # top_bar y=0..138px -> rows 0..23
+        # lb_top_matte y=0..420px -> rows 0..70
+        # lb_mid_strip y=468..900px -> rows 78..150
+        # upper_stage y=186..840px -> rows 31..140
+        # lower_stage y=882..1302px -> rows 147..217
+        # lb_bot_matte y=936..1440px -> rows 156..240
+        top_px = buf[0 : 23 * sw]
+        lb_top = buf[0 : 70 * sw]
+        lb_mid = buf[78 * sw : 150 * sw]
+        upper_px = buf[31 * sw : 140 * sw]
+        lower_px = buf[147 * sw : 217 * sw]
+        lb_bot = buf[156 * sw : 240 * sw]
+
+        frame_black_ratio = sum(1 for p in buf if p < 16) / float(f_sz)
+        black_ratios.append(frame_black_ratio)
+
+        lb_top_dark = sum(1 for p in lb_top if p < 18) / max(1, len(lb_top))
+        lb_bot_dark = sum(1 for p in lb_bot if p < 20) / max(1, len(lb_bot))
+        lb_mid_mean = sum(lb_mid) / max(1, len(lb_mid))
+        lb_mid_std = math.sqrt(sum((p - lb_mid_mean) ** 2 for p in lb_mid) / max(1, len(lb_mid)))
+
+        is_narrow_lb = lb_top_dark > 0.90 and lb_bot_dark > 0.84 and lb_mid_std > 14.0
+        if is_narrow_lb:
+            letterbox_secs.append(sec_i)
+            cur_lb_run += 1
+            max_lb_run = max(max_lb_run, cur_lb_run)
+        else:
+            cur_lb_run = 0
 
         top_mean = sum(top_px) / max(1, len(top_px))
+        top_std = math.sqrt(sum((p - top_mean) ** 2 for p in top_px) / max(1, len(top_px)))
         upper_mean = sum(upper_px) / max(1, len(upper_px))
+        upper_std = math.sqrt(sum((p - upper_mean) ** 2 for p in upper_px) / max(1, len(upper_px)))
         lower_mean = sum(lower_px) / max(1, len(lower_px))
+        lower_dark_ratio = sum(1 for p in lower_px if p < 20) / max(1, len(lower_px))
+        lower_bright_ratio = sum(1 for p in lower_px if p > 52) / max(1, len(lower_px))
 
-        upper_var = sum((p - upper_mean) ** 2 for p in upper_px) / max(1, len(upper_px))
-        upper_std = math.sqrt(upper_var)
+        if style_slot != "v4":
+            if (
+                not is_narrow_lb
+                and upper_mean > 40.0
+                and upper_std > 18.0
+                and lower_dark_ratio > 0.90
+                and lower_bright_ratio < 0.042
+            ):
+                void_hits.append(
+                    f"t={t_val:.1f}s(上半屏亮度={upper_mean:.0f}, 下半屏 y=880..1300px 死黑占比={lower_dark_ratio:.0%}, 有效高亮={lower_bright_ratio:.1%})"
+                )
 
-        lower_dark_cnt = sum(1 for p in lower_px if p < 20)
-        lower_bright_cnt = sum(1 for p in lower_px if p > 52)
-        lower_dark_ratio = lower_dark_cnt / max(1, len(lower_px))
-        lower_bright_ratio = lower_bright_cnt / max(1, len(lower_px))
-
-        top_var = sum((p - top_mean) ** 2 for p in top_px) / max(1, len(top_px))
-        top_std = math.sqrt(top_var)
-
-        frame_metrics.append(
-            {
-                "t": t_val,
-                "top_mean": round(top_mean, 1),
-                "upper_mean": round(upper_mean, 1),
-                "lower_mean": round(lower_mean, 1),
-                "lower_dark_ratio": round(lower_dark_ratio, 3),
-                "lower_bright_ratio": round(lower_bright_ratio, 3),
-            }
-        )
-
-        # 1) Split-screen half-black empty void (upper video bright, lower y=880..1300px >90% dead black & <4.2% bright info)
-        if upper_mean > 40.0 and upper_std > 18.0 and lower_dark_ratio > 0.90 and lower_bright_ratio < 0.042:
-            void_hits.append(
-                f"t={t_val:.2f}s(上半屏亮度={upper_mean:.0f}, 下半屏 y=880..1300px 死黑占比={lower_dark_ratio:.0%}, 有效高亮={lower_bright_ratio:.1%})"
-            )
-
-        # 2) L3 top-split video invading top status-bar zone y<136px while lower stage is dark canvas
         if lower_mean < 28.0 and lower_dark_ratio > 0.72 and top_mean > 58.0 and top_std > 16.0:
-            topbar_hits.append(f"t={t_val:.2f}s(顶栏 y<136px 亮度={top_mean:.0f}, 下半屏暗底={lower_mean:.0f})")
+            topbar_hits.append(f"t={t_val:.1f}s(顶栏 y<136px 亮度={top_mean:.0f}, 下半屏暗底={lower_mean:.0f})")
 
+    lb_ratio = len(letterbox_secs) / max(1, effective_n)
+    mean_black_ratio = sum(black_ratios) / max(1, len(black_ratios))
+    lb_run_limit = 7 if style_slot == "v4" else 5
+    lb_ratio_limit = 0.36 if style_slot == "v4" else 0.25
+
+    if max_lb_run > lb_run_limit or lb_ratio > lb_ratio_limit:
+        hard_failures.append(
+            f"成片像素级「单窄条黑边霸屏」缺陷 [{style_slot}]：2.39:1 窄带遮幅占全片 {lb_ratio:.0%}(上限 {lb_ratio_limit:.0%})，最长连续窄黑带 {max_lb_run}s(上限 {lb_run_limit}s) —— 严禁一条小横带配上下超 70% 死黑从头挂到尾！"
+        )
+    if style_slot == "v4" and mean_black_ratio > 0.62:
+        hard_failures.append(
+            f"v4(S04) 成片像素级全片死黑空旷缺陷：全片平均纯黑像素占比高达 {mean_black_ratio:.0%}(> 62% 上限)，须引入 L1/PF3 满幅暗角人像、L4 三联画胶片格与暗金光影空间场充实竖屏画幅"
+        )
     if void_hits:
         hard_failures.append(
             f"成片像素级「半屏死黑空洞」缺陷：{'; '.join(void_hits[:3])} —— 上半屏放横屏画面但下半屏主叙事区大面积纯黑留空，必须填充具象业务卡片/对照图解或改用竖屏满幅构图"
@@ -4609,11 +5263,54 @@ def audit_rendered_frames_pixels(
             f"成片分屏视频侵入顶部状态栏禁区：{'; '.join(topbar_hits[:3])} —— L3 上分屏视频未下移避让顶部 y<180px 状态栏/灵动岛禁区"
         )
 
+    # 2) Speaker-PiP 50ms head/tail pixel liveness check (catches premature avatar vanish leaving empty ring!)
+    pip_dead_hits: list[str] = []
+    if pip_liveness_targets:
+        p_cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"]
+        for _, pt_s, _ in pip_liveness_targets[:12]:
+            p_cmd += ["-ss", f"{pt_s:.3f}", "-i", str(video)]
+        n_pt = min(12, len(pip_liveness_targets))
+        p_vf = [f"[{i}:v]scale=540:960,format=gray[pg{i}]" for i in range(n_pt)]
+        if n_pt == 1:
+            p_map = "[pg0]"
+        else:
+            p_vf.append(f"{''.join(f'[pg{i}]' for i in range(n_pt))}vstack=inputs={n_pt}[pgout]")
+            p_map = "[pgout]"
+        p_cmd += ["-filter_complex", ";".join(p_vf), "-map", p_map, "-frames:v", "1", "-f", "rawvideo", "-"]
+        p_proc = run_cmd_bytes(p_cmd)
+        pf_sz = 540 * 960
+        if p_proc.returncode == 0 and len(p_proc.stdout) >= pf_sz:
+            avail_pt = min(n_pt, len(p_proc.stdout) // pf_sz)
+            for idx_p in range(avail_pt):
+                lbl_p, pt_s, vbox_p = pip_liveness_targets[idx_p]
+                fbuf = p_proc.stdout[idx_p * pf_sz : (idx_p + 1) * pf_sz]
+                # Sample inner 60% core of PiP box at 1/2 scale (540x960)
+                bx, by, bw_p, bh_p = [v // 2 for v in vbox_p]
+                ix1 = max(0, bx + int(bw_p * 0.20))
+                ix2 = min(539, bx + int(bw_p * 0.80))
+                iy1 = max(0, by + int(bh_p * 0.20))
+                iy2 = min(959, by + int(bh_p * 0.80))
+                patch_vals = [
+                    fbuf[ry * 540 + rx] for ry in range(iy1, max(iy1 + 1, iy2)) for rx in range(ix1, max(ix1 + 1, ix2))
+                ]
+                if patch_vals:
+                    p_mean = sum(patch_vals) / len(patch_vals)
+                    p_std = math.sqrt(sum((v - p_mean) ** 2 for v in patch_vals) / len(patch_vals))
+                    if p_std < 12.0:
+                        pip_dead_hits.append(f"{lbl_p}@{pt_s:.2f}s(框内纹理std={p_std:.1f}<12，退化为空底板/空圈)")
+    if pip_dead_hits:
+        hard_failures.append(
+            f"成片像素级「PiP 人物头像早退/空框穿帮」缺陷：{'; '.join(pip_dead_hits[:4])} —— 挂件首尾 50ms 框内无人物纹理！"
+        )
+
     return {
-        "sampled_timestamps": sample_ts,
-        "frames": frame_metrics,
+        "scanned_seconds": effective_n,
+        "letterbox_frame_ratio": round(lb_ratio, 3),
+        "max_letterbox_run_sec": max_lb_run,
+        "mean_frame_black_ratio": round(mean_black_ratio, 3),
         "void_hits": void_hits,
         "topbar_hits": topbar_hits,
+        "pip_dead_hits": pip_dead_hits,
     }
 
 
@@ -4630,6 +5327,8 @@ def _infer_film_timeline_duration(film_dir: Path) -> float:
                 for ac in parse_audio_tags_in_section(sm.group(1)):
                     if ac.get("end") is not None:
                         max_t = max(max_t, float(ac["end"]))
+                    elif ac.get("dur") is not None:
+                        max_t = max(max_t, float(ac.get("at") or 0.0) + float(ac["dur"]))
                     else:
                         af = film_dir / ac["base_src"]
                         if af.is_file():
@@ -4651,6 +5350,319 @@ def _infer_film_timeline_duration(film_dir: Path) -> float:
             if ends:
                 max_t = max(ends) + 1.0
     return max_t if max_t > 0 else 30.0
+
+
+def cmd_select_cover_frames(args: argparse.Namespace) -> int:
+    """Scan source speaker video with offline YuNet + 478-pt 3D FaceMesh and export camera-facing natural portrait pool."""
+    video_p = Path(args.video)
+    if not video_p.is_file():
+        print(f"error: video not found: {video_p}", file=sys.stderr)
+        return 1
+    models = _get_face_models()
+    if models is None:
+        print("error: offline YuNet or OpenFilm face.task model missing in workspace", file=sys.stderr)
+        return 1
+
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fps_scan = max(2.0, min(10.0, float(args.fps)))
+    probe = ffprobe_json(video_p)
+    dur = float((probe.get("format") or {}).get("duration") or 0.0)
+    vs = next((s for s in (probe.get("streams") or []) if s.get("codec_type") == "video"), None)
+    vw = int((vs or {}).get("width") or 1920)
+    vh = int((vs or {}).get("height") or 1080)
+    scan_w = min(960, vw)
+    scan_h = max(180, int(round(vh * scan_w / max(1, vw))))
+    if scan_h % 2 == 1:
+        scan_h += 1
+
+    def _build_scan(hw_flags: list[str]) -> list[str]:
+        return [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            *hw_flags,
+            "-i",
+            str(video_p),
+            "-vf",
+            f"fps={fps_scan:.2f},scale={scan_w}:{scan_h}",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-",
+        ]
+
+    proc = run_cmd_bytes(_build_scan(["-hwaccel", "cuda"]) if has_cuda_hwaccel() else _build_scan([]))
+    if proc.returncode != 0 or len(proc.stdout) < scan_w * scan_h * 3:
+        proc = run_cmd_bytes(_build_scan([]))
+    frame_sz = scan_w * scan_h * 3
+    n_frames = len(proc.stdout) // max(1, frame_sz)
+    if n_frames == 0:
+        print("error: failed to decode frames from source video", file=sys.stderr)
+        return 1
+
+    raw_evals: list[dict[str, Any]] = []
+    prev_face_gray: Any = None
+    for idx in range(n_frames):
+        t_s = round(idx / fps_scan, 2)
+        if t_s < 0.25 or (dur > 2.0 and t_s > dur - 0.35):
+            continue
+        bgr = np.frombuffer(proc.stdout[idx * frame_sz : (idx + 1) * frame_sz], dtype=np.uint8).reshape(
+            (scan_h, scan_w, 3)
+        )
+        ev = evaluate_portrait_bgr(bgr, min_sym_override=0.0)
+        if not ev or not ev.get("has_face"):
+            prev_face_gray = None
+            continue
+        fx, fy, fw, fh = ev["face_box_px"]
+        x1, y1 = max(0, fx), max(0, fy)
+        x2, y2 = min(scan_w, fx + fw), min(scan_h, fy + fh)
+        cur_gray = cv2.resize(cv2.cvtColor(bgr[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY), (64, 64)) if (x2 > x1 and y2 > y1) else None
+        motion_diff = 0.0
+        if cur_gray is not None and prev_face_gray is not None:
+            motion_diff = float(np.mean(np.abs(cur_gray.astype(np.float32) - prev_face_gray.astype(np.float32))))
+        prev_face_gray = cur_gray
+        ev["t"] = t_s
+        ev["frame_idx"] = idx
+        ev["motion_diff"] = round(motion_diff, 2)
+        raw_evals.append(ev)
+
+    if not raw_evals:
+        print("error: no speaker faces detected in video", file=sys.stderr)
+        return 1
+
+    syms = np.array([e["cheek_sym"] for e in raw_evals], dtype=np.float32)
+    ears = np.array([e["min_ear"] for e in raw_evals], dtype=np.float32)
+    lips = np.array([e["lip_fullness"] for e in raw_evals], dtype=np.float32)
+    p90_sym = float(np.percentile(syms, 90))
+    p75_sym = float(np.percentile(syms, 75))
+    has_frontal_turns = p90_sym >= 0.65
+    select_min_sym = max(0.58, min(0.68, p75_sym)) if has_frontal_turns else max(0.42, float(np.percentile(syms, 72)))
+    audit_min_sym = 0.56 if has_frontal_turns else round(max(0.40, select_min_sym - 0.04), 2)
+    min_ear_adapt = max(0.185, min(0.212, float(np.percentile(ears, 40))))
+    min_lip_adapt = max(0.45, min(0.485, float(np.percentile(lips, 14))))
+
+    qualified: list[dict[str, Any]] = []
+    for ev in raw_evals:
+        if (
+            ev["cheek_sym"] >= select_min_sym
+            and abs(ev["roll_deg"]) <= 9.2
+            and 0.188 <= ev["pitch_ratio"] <= 0.280
+            and ev["min_ear"] >= max(0.196, min_ear_adapt)
+            and ev["ear_asym"] <= 0.228
+            and abs(ev["gaze_x"] - 0.528) <= 0.060
+            and 0.29 <= ev["gaze_y"] <= 0.56
+            and ev["glare_ratio"] <= 0.08
+            and ev["mar_inner"] <= 0.156
+            and min_lip_adapt <= ev["lip_fullness"] <= 0.68
+            and ev["mouth_width_ratio"] >= 0.415
+            and ev["corner_asym"] <= 0.075
+            and ev["hand_intrusion"] <= 0.20
+        ):
+            steady_bonus = max(0.0, 4.5 * (1.0 - min(1.0, ev["motion_diff"] / 9.0)))
+            ev["rank_score"] = round(ev["score"] + steady_bonus, 2)
+            qualified.append(ev)
+
+    if len(qualified) < 18:
+        relax_sym = max(0.565 if has_frontal_turns else 0.40, select_min_sym - 0.04)
+        qualified = []
+        for ev in raw_evals:
+            if (
+                ev["cheek_sym"] >= relax_sym
+                and abs(ev["roll_deg"]) <= 9.5
+                and 0.185 <= ev["pitch_ratio"] <= 0.285
+                and ev["min_ear"] >= 0.195
+                and ev["ear_asym"] <= 0.235
+                and abs(ev["gaze_x"] - 0.525) <= 0.060
+                and 0.28 <= ev["gaze_y"] <= 0.57
+                and ev["glare_ratio"] <= 0.09
+                and ev["mar_inner"] <= 0.160
+                and 0.448 <= ev["lip_fullness"] <= 0.69
+                and ev["mouth_width_ratio"] >= 0.408
+                and ev["corner_asym"] <= 0.080
+                and ev["hand_intrusion"] <= 0.22
+            ):
+                steady_bonus = max(0.0, 4.0 * (1.0 - min(1.0, ev["motion_diff"] / 9.0)))
+                ev["rank_score"] = round(ev["score"] + steady_bonus, 2)
+                qualified.append(ev)
+
+    qualified.sort(key=lambda x: -x["rank_score"])
+    want_n = max(6, int(args.count))
+    picked: list[dict[str, Any]] = []
+    for min_gap in (1.4, 0.9, 0.55):
+        for cand in qualified:
+            if len(picked) >= want_n:
+                break
+            if any(abs(cand["t"] - p["t"]) < min_gap for p in picked):
+                continue
+            picked.append(cand)
+        if len(picked) >= min(want_n, 18):
+            break
+
+    # Clean old cand-*.jpg files before single-pass exact-frame extraction (zero -ss GOP seek drift!)
+    for old_c in out_dir.glob("cand-*.jpg"):
+        old_c.unlink(missing_ok=True)
+    picked_by_time = sorted(picked, key=lambda x: x["frame_idx"])
+    verified_cands: list[dict[str, Any]] = []
+    zoom_tiles: list[Any] = []
+
+    if picked_by_time:
+        sel_expr = "+".join(f"eq(n\\,{c['frame_idx']})" for c in picked_by_time)
+        tmp_pat = str(out_dir / "_exact_%03d.jpg")
+
+        def _build_exact_ext(hw_flags: list[str]) -> list[str]:
+            return [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *hw_flags,
+                "-i",
+                str(video_p),
+                "-vf",
+                f"fps={fps_scan:.2f},select='{sel_expr}'",
+                "-fps_mode",
+                "passthrough",
+                "-q:v",
+                "2",
+                tmp_pat,
+            ]
+
+        ext_p = run_cmd(_build_exact_ext(["-hwaccel", "cuda"]) if has_cuda_hwaccel() else _build_exact_ext([]))
+        if ext_p.returncode != 0:
+            run_cmd(_build_exact_ext([]))
+
+        tmp_jpgs = sorted(out_dir.glob("_exact_*.jpg"))
+        # Rank order mapping
+        rank_order_map = {id(c): r_i for r_i, c in enumerate(picked, start=1)}
+        paired_items: list[tuple[int, dict[str, Any], Path]] = []
+        for cand_c, tmp_f in zip(picked_by_time, tmp_jpgs):
+            paired_items.append((rank_order_map[id(cand_c)], cand_c, tmp_f))
+        paired_items.sort(key=lambda x: x[0])
+
+        for _, cand, tmp_f in paired_items:
+            t_val = cand["t"]
+            full_bgr = cv2.imread(str(tmp_f))
+            full_ev = evaluate_portrait_bgr(full_bgr, min_sym_override=audit_min_sym) if full_bgr is not None else None
+            if not full_ev or not full_ev.get("has_face"):
+                tmp_f.unlink(missing_ok=True)
+                continue
+            new_rank = len(verified_cands) + 1
+            fname = f"cand-{new_rank:02d}-{t_val:06.2f}s.jpg"
+            fpath = out_dir / fname
+            tmp_f.replace(fpath)
+            full_ev["rank"] = new_rank
+            full_ev["t"] = t_val
+            full_ev["file"] = rel_path(fpath)
+            full_ev["rank_score"] = round(0.5 * cand["rank_score"] + 0.5 * full_ev["score"], 2)
+            dh_full = compute_visual_dhash(fpath)
+            full_ev["dhash"] = f"{dh_full:016x}" if dh_full is not None else None
+            verified_cands.append(full_ev)
+        for leftover in out_dir.glob("_exact_*.jpg"):
+            leftover.unlink(missing_ok=True)
+
+    verified_cands.sort(key=lambda x: (-int(bool(x["passed"])), -x["rank_score"]))
+    for idx_v, vc_it in enumerate(verified_cands, start=1):
+        vc_it["rank"] = idx_v
+        fbgr_v = cv2.imread(str(Path(vc_it["file"])))
+        if fbgr_v is not None:
+            zoom_tiles.append(_crop_face_zoom_tile(fbgr_v, vc_it, f"#{idx_v:02d} t={vc_it['t']:.2f}s"))
+
+    # Write 420x480 closeup face-zoom-sheet.jpg AND contact-sheet.jpg alias
+    zoom_sheet_p = out_dir / "face-zoom-sheet.jpg"
+    contact_sheet_p = out_dir / "contact-sheet.jpg"
+    if zoom_tiles:
+        cols = min(4, len(zoom_tiles))
+        pad_n = (cols - (len(zoom_tiles) % cols)) % cols
+        for _ in range(pad_n):
+            zoom_tiles.append(np.zeros((480, 420, 3), dtype=np.uint8))
+        rows_img = [np.hstack(zoom_tiles[r : r + cols]) for r in range(0, len(zoom_tiles), cols)]
+        grid_img = np.vstack(rows_img) if len(rows_img) > 1 else rows_img[0]
+        cv2.imwrite(str(zoom_sheet_p), grid_img, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        cv2.imwrite(str(contact_sheet_p), grid_img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+
+    # Pre-allocate orthogonal non-overlapping frames across slots/platforms
+    passed_pool = [c for c in verified_cands if c["passed"]] or verified_cands
+    allocations: dict[str, dict[str, Any]] = {}
+    plats = ["douyin", "xhs", "shipinhao"]
+    if args.mode == "matrix":
+        slots_order = ["master", "v1", "v2", "v3", "v4"]
+        used_ts: list[float] = []
+        # Round-robin across slots so all 5 slots get top-tier frontal faces!
+        for p_idx, plat in enumerate(plats):
+            for s_name in slots_order:
+                slot_dict = allocations.setdefault(s_name, {})
+                slot_ts = [v["t"] for v in slot_dict.values()]
+                chosen = next(
+                    (
+                        c
+                        for c in passed_pool
+                        if all(abs(c["t"] - ut) >= 1.1 for ut in used_ts)
+                        and all(abs(c["t"] - st) >= 2.4 for st in slot_ts)
+                    ),
+                    None,
+                )
+                if chosen is None:
+                    chosen = next((c for c in passed_pool if c["t"] not in used_ts), passed_pool[p_idx % len(passed_pool)])
+                slot_dict[plat] = chosen
+                used_ts.append(chosen["t"])
+    else:
+        slot_dict = {}
+        used_ts_s: list[float] = []
+        for idx_p, plat in enumerate(plats):
+            chosen = next(
+                (c for c in passed_pool if all(abs(c["t"] - ut) >= 2.5 for ut in used_ts_s)),
+                passed_pool[min(idx_p, len(passed_pool) - 1)],
+            )
+            slot_dict[plat] = chosen
+            used_ts_s.append(chosen["t"])
+        allocations["single"] = slot_dict
+
+    pool_report = {
+        "video": rel_path(video_p),
+        "duration_sec": round(dur, 2),
+        "scanned_frames": len(raw_evals),
+        "has_frontal_turns": has_frontal_turns,
+        "cheek_sym_p75": round(p75_sym, 3),
+        "cheek_sym_p90": round(p90_sym, 3),
+        "select_min_cheek_sym": round(select_min_sym, 3),
+        "audit_min_cheek_sym": round(audit_min_sym, 3),
+        "face_zoom_sheet": rel_path(zoom_sheet_p),
+        "contact_sheet": rel_path(contact_sheet_p),
+        "candidate_count": len(verified_cands),
+        "recommended_allocations": allocations,
+        "candidates": verified_cands,
+    }
+    pool_json_p = out_dir / "cover-frame-pool.json"
+    pool_json_p.write_text(json.dumps(pool_report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "video": pool_report["video"],
+                "scanned_frames": pool_report["scanned_frames"],
+                "has_frontal_turns": has_frontal_turns,
+                "audit_min_cheek_sym": pool_report["audit_min_cheek_sym"],
+                "candidate_count": len(verified_cands),
+                "face_zoom_sheet": pool_report["face_zoom_sheet"],
+                "pool_json": rel_path(pool_json_p),
+                "recommended_allocations": {
+                    k: {pk: {"t": pv["t"], "file": pv["file"], "score": pv["rank_score"], "cheek_sym": pv["cheek_sym"], "roll_deg": pv["roll_deg"]} for pk, pv in v.items()}
+                    for k, v in allocations.items()
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
 
 
 def cmd_probe_speaker_focus(args: argparse.Namespace) -> int:
@@ -4826,8 +5838,14 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
             else (slot_root / "covers" if (slot_root / "covers").is_dir() else None)
         )
         if covers_dir and covers_dir.is_dir():
+            face_sheet_p = (Path(args.out_dir) / "safezone-cover-faces.png") if args.out_dir else None
             cover_checks = audit_covers(
-                covers_dir, slot_root, hard_failures, warnings, style_slot=style_slot
+                covers_dir,
+                slot_root,
+                hard_failures,
+                warnings,
+                style_slot=style_slot,
+                face_sheet_out=face_sheet_p,
             )
 
     pub_checks: dict[str, Any] = {}
@@ -4959,18 +5977,26 @@ def extract_slot_fingerprint(slot_name: str, slot_dir: Path) -> dict[str, Any]:
 
         if main_c and dur > 0:
             fp["asl_sec"] = round(dur / len(main_c), 2)
-            fs_sec = sum(
-                (c["dur"] or 0.0)
-                for c in main_c
-                if c["tag"] == "video"
-                and (
+            fs_sec = 0.0
+            for c in main_c:
+                if c["tag"] == "video" and (
                     Path(c["base_src"]).name.lower() in speaker_vids
                     or SPEAKER_VID_NAME_RE.search(Path(c["base_src"]).name)
-                )
-            )
+                ):
+                    m_css_s = ";".join([css_rules.get(cls, "") for cls in c.get("classes", [])] + [c.get("style", "")])
+                    bw_s = parse_css_px(m_css_s, "width", 1080.0) or 1080.0
+                    bh_s = parse_css_px(m_css_s, "height", 1920.0) or 1920.0
+                    it_s, _, ib_s, _ = resolve_pip_steady_inset(m_css_s, kf_map, bw_s, bh_s)
+                    if (bh_s - it_s - ib_s) >= 1200.0:
+                        fs_sec += c["dur"] or 0.0
             fp["fullscreen_speaker_ratio"] = round(min(1.0, fs_sec / dur), 3)
 
-            for mc in main_c:
+            aux_broll_c: list[dict[str, Any]] = []
+            for ax_m_fp in re.finditer(r'<section[^>]*id=["\']([^"\']+)["\'][^>]*>(.*?)</section>', htxt, re.I | re.S):
+                if "triptych" in ax_m_fp.group(1).lower():
+                    aux_broll_c.extend(parse_clips_in_section(ax_m_fp.group(2)))
+
+            for mc in (main_c + aux_broll_c):
                 if mc["tag"] == "video":
                     bn = Path(mc["base_src"]).name.lower()
                     if bn not in speaker_vids and not SPEAKER_VID_NAME_RE.search(bn):
@@ -5169,6 +6195,7 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
     any_covers_present = any((sdir / "covers").is_dir() and list((sdir / "covers").glob("*.png")) for _, sdir in slot_dirs)
     cover_dhashes_by_plat: dict[str, list[tuple[str, int]]] = {}
     seen_titles_by_plat: dict[str, dict[str, str]] = {}
+    matrix_face_rows: list[Any] = []
 
     for (sname, sdir), fp in zip(slot_dirs, fingerprints):
         cslot = fp["canonical_slot"]
@@ -5177,7 +6204,24 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
             if not cdir.is_dir() or not list(cdir.glob("*.png")):
                 hard_failures.append(f"入口 E 封面缺失：槽位 `{sname}` 未生成 `covers/*.png`")
             else:
-                audit_covers(cdir, sdir, hard_failures, warnings, style_slot=cslot)
+                slot_face_sheet = sdir / "output" / "check" / "safezone-cover-faces.png"
+                audit_covers(
+                    cdir,
+                    sdir,
+                    hard_failures,
+                    warnings,
+                    style_slot=cslot,
+                    face_sheet_out=slot_face_sheet,
+                )
+                if slot_face_sheet.is_file():
+                    try:
+                        import cv2  # type: ignore
+
+                        r_img = cv2.imread(str(slot_face_sheet))
+                        if r_img is not None:
+                            matrix_face_rows.append(r_img)
+                    except Exception:
+                        pass
                 for plat in target_platforms:
                     matches = sorted(cdir.glob(f"*{plat}.png"))
                     if not matches:
@@ -5236,9 +6280,30 @@ def cmd_audit_matrix(args: argparse.Namespace) -> int:
                             f"delivery/ 陈旧副本不一致：`{rel_path(df)}`({df.stat().st_size}B) 与源目录产物({src_size_by_name[df.name]}B)不一致，返工后必须整包重建 delivery/"
                         )
 
+    matrix_faces_rel: str | None = None
+    if matrix_face_rows:
+        try:
+            import cv2  # type: ignore
+            import numpy as np  # type: ignore
+
+            max_w_row = max(r.shape[1] for r in matrix_face_rows)
+            padded_rows = [
+                r
+                if r.shape[1] == max_w_row
+                else np.hstack([r, np.zeros((r.shape[0], max_w_row - r.shape[1], 3), dtype=np.uint8)])
+                for r in matrix_face_rows
+            ]
+            m_sheet_p = run_dir / "master" / "output" / "check" / "matrix-cover-faces.png"
+            m_sheet_p.parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(m_sheet_p), np.vstack(padded_rows))
+            matrix_faces_rel = rel_path(m_sheet_p)
+        except Exception:
+            pass
+
     report = {
         "run_dir": rel_path(run_dir),
         "slot_count": len(fingerprints),
+        "matrix_cover_faces_sheet": matrix_faces_rel,
         "fingerprints": fingerprints,
         "hard_failures": hard_failures,
         "warnings": warnings,
@@ -5341,6 +6406,16 @@ def main() -> int:
     p_focus.add_argument("--update-plan", help="Optional storyboard.json or master-plan.json to write speaker_focus")
     p_focus.add_argument("--out", help="Optional JSON output path")
 
+    p_cframes = sub.add_parser(
+        "select-cover-frames",
+        help="Scan speaker video with offline YuNet + 478-pt 3D FaceMesh to export camera-facing natural portrait pool.",
+    )
+    p_cframes.add_argument("--video", required=True, help="Clean speaker source video path")
+    p_cframes.add_argument("--out-dir", required=True, help="Output directory for cand-*.jpg, face-zoom-sheet.jpg & cover-frame-pool.json")
+    p_cframes.add_argument("--mode", choices=["single", "matrix"], default="matrix", help="Allocation mode (default: matrix)")
+    p_cframes.add_argument("--fps", type=float, default=5.0, help="Scan frame rate (default: 5.0)")
+    p_cframes.add_argument("--count", type=int, default=24, help="Max top candidate frames to export (default: 24)")
+
     p_pre = sub.add_parser(
         "preflight-film",
         help="Run fast 3-second pre-render static & parallel B-roll QC gate BEFORE acquiring GPU render lock.",
@@ -5408,6 +6483,8 @@ def main() -> int:
         return cmd_stabilize_broll(args)
     if args.cmd == "probe-speaker-focus":
         return cmd_probe_speaker_focus(args)
+    if args.cmd == "select-cover-frames":
+        return cmd_select_cover_frames(args)
     if args.cmd == "preflight-film":
         return cmd_preflight_film(args)
     if args.cmd == "audit-render":
